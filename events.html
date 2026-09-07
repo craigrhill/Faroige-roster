@@ -17,10 +17,17 @@
 </div></header>
 <main class="wrap">
   <div id="err" class="banner err" hidden></div>
-  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:1rem">
-    <div><h1 id="title">What is on</h1><p class="muted" id="intro"></p></div>
-    <button class="btn quiet noprint" onclick="window.print()">Print</button>
+  <h1 id="title">What is on</h1>
+  <p class="muted" id="intro"></p>
+  <div class="toolbar noprint">
+    <span class="seg" role="group" aria-label="How to show it">
+      <button id="segTable" onclick="setView('table')">Table</button><button id="segCal" onclick="setView('calendar')">Calendar</button>
+    </span>
+    <a class="btn quiet" id="subLink" href="#">Subscribe</a>
+    <button class="btn quiet" onclick="window.print()">Print</button>
   </div>
+  <div id="subHelp" class="banner noprint" hidden></div>
+  <div class="printhead" hidden></div>
   <div id="callout" class="banner" hidden></div>
   <div id="list"></div>
 </main>
@@ -33,7 +40,9 @@
 // Plain, it is the calendar for parents. With ?gaps on the address it also
 // says how short each night is, which is the link to send when chasing.
 const GAPS = new URLSearchParams(location.search).has("gaps");
-let C = null, D = null, KEY = null;
+const VK = "foroige-view";
+let C = null, D = null, KEY = null, VIEW = "table";
+try { VIEW = localStorage.getItem(VK) === "calendar" ? "calendar" : "table"; } catch {}
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
 const iso = d => d.toISOString().slice(0, 10);
 const DAYS = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
@@ -54,6 +63,28 @@ function fromConfig(){
 }
 const MONTH = s => new Date(s + "T12:00:00").toLocaleDateString("en-IE", { month: "long", year: "numeric" });
 
+// 19:30 as people say it, and a range that says "pm" once when both halves
+// share it.
+function clock(t){
+  const [h, m] = t.split(":").map(Number);
+  const suf = h < 12 ? "am" : "pm", hh = h % 12 || 12;
+  return { text: `${hh}:${String(m).padStart(2, "0")}`, suf };
+}
+function span(a, b){
+  if (!a) return "";
+  const s1 = clock(a);
+  if (!b) return `${s1.text} ${s1.suf}`;
+  const s2 = clock(b);
+  return s1.suf === s2.suf ? `${s1.text} to ${s2.text} ${s2.suf}` : `${s1.text} ${s1.suf} to ${s2.text} ${s2.suf}`;
+}
+// What a night runs at: its own times, else the club's, else whatever the
+// setup file says in prose.
+function runsAt(e, section){
+  if (e.startTime) return span(e.startTime, e.endTime);
+  if (e.kind !== "m") return "";
+  if (D.startTime) return span(D.startTime, D.endTime);
+  return section.time || "";
+}
 function needOf(e){ return e.need > 0 ? e.need : D.required; }
 function needTOf(e){
   const def = e.kind === "e" ? D.requiredTrainedEvents : D.requiredTrained;
@@ -82,7 +113,7 @@ function render(){
   $("mode").hidden = !GAPS;
   $("intro").textContent = GAPS
     ? "Every club night needs " + D.required + " leaders, and one of them has to hold " + TRAIN.label.toLowerCase() + ". These are the ones still short."
-    : [section.name || "Club night", [section.time, section.venue].filter(Boolean).join(", ")].filter(Boolean).join(", ") + ". Everything coming up is below.";
+    : [section.name || "Club night", [D.startTime ? span(D.startTime, D.endTime) : section.time, section.venue].filter(Boolean).join(", ")].filter(Boolean).join(", ") + ". Everything coming up is below.";
 
   const live = list.filter(e => !e.off);
   const short = live.filter(e => statusOf(e).short);
@@ -97,6 +128,15 @@ function render(){
       : `<b>All ${live.length} covered.</b> Nothing needed just now.`;
   }
 
+  $("list").className = VIEW === "calendar" ? "asgrid" : "";
+  $("segTable").className = VIEW === "table" ? "on" : "";
+  $("segCal").className = VIEW === "calendar" ? "on" : "";
+  $("subLink").href = API + "?a=ics&section=" + encodeURIComponent(KEY);
+  const ph = document.querySelector(".printhead");
+  ph.innerHTML = `<b>${esc((C.club || {}).name || "")}</b> &middot; ${esc($("title").textContent)} &middot; printed ${esc(new Date().toLocaleDateString("en-IE", { day: "numeric", month: "long", year: "numeric" }))}`;
+  ph.hidden = false;
+  if (VIEW === "calendar") return renderGrid(list, section);
+
   let month = "";
   $("list").innerHTML = list.map((e, i) => {
     const st = statusOf(e), head = MONTH(e.date);
@@ -106,11 +146,11 @@ function render(){
     const where = e.kind === "e" ? e.location : (e.location || section.venue);
     // The line under the name: when it runs, then when in the evening, then
     // where. Whichever of those is known.
-    const span = e.endDate ? `${d.getDate()} ${d.toLocaleDateString("en-IE", { month: "short" })} to ${fmt(e.endDate).replace(/^\w+, /, "")}`
+    const when = e.endDate ? `${d.getDate()} ${d.toLocaleDateString("en-IE", { month: "short" })} to ${fmt(e.endDate).replace(/^\w+, /, "")}`
       : d.toLocaleDateString("en-IE", { weekday: "long" });
-    const sub = [span, e.kind === "m" ? section.time : "", where].filter(Boolean).join(" &middot; ");
+    const sub = [when, runsAt(e, section), where].filter(Boolean).join(" &middot; ");
     const more = e.details || (GAPS && st.short);
-    return `${rule}<article class="ev${e.off ? " isoff" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
+    return `${rule}<article data-date="${esc(e.date)}" class="ev${e.off ? " isoff" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
       <div class="evdate"><b>${d.getDate()}</b><span>${esc(d.toLocaleDateString("en-IE", { month: "short" }).toUpperCase())}</span></div>
       <div class="evbody">
         <h3 class="evtitle">${esc(e.title)} ${kindBadge(e)}${e.off ? `<span class="badge off">Called off</span>` : ""}</h3>
@@ -127,6 +167,44 @@ function render(){
     : "Dates can change. This page is kept up to date by the club.";
 }
 
+// The same nights as a month at a time. Marked days carry the name where
+// there is room for it, and tapping one goes to it in the table.
+function renderGrid(list, section){
+  const byMonth = new Map();
+  list.forEach(e => { const k = e.date.slice(0, 7); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(e); });
+  const names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  $("list").innerHTML = [...byMonth.entries()].map(([ym, evs]) => {
+    const [y, m] = ym.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1)), days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const lead = (first.getUTCDay() + 6) % 7;                       // weeks start on Monday
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push(`<div class="cell out"></div>`);
+    for (let d = 1; d <= days; d++) {
+      const date = `${ym}-${String(d).padStart(2, "0")}`;
+      const on = evs.filter(e => e.date <= date && (e.endDate || e.date) >= date);
+      if (!on.length) { cells.push(`<div class="cell"><span class="n">${d}</span></div>`); continue; }
+      const st = statusOf(on[0]);
+      const cls = on[0].off ? "isoff" : GAPS && st.short ? "short" : "has";
+      cells.push(`<div class="cell ${cls}" onclick="jumpTo('${esc(on[0].date)}')" role="button" tabindex="0"
+        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();jumpTo('${esc(on[0].date)}')}"
+        title="${esc(on.map(e => e.title).join(", "))}"><span class="n">${d}</span><span class="what">${esc(on[0].title)}</span></div>`);
+    }
+    return `<h2 class="month">${esc(MONTH(ym + "-01"))}</h2>
+      <div class="grid">${names.map(n => `<div class="dow">${n}</div>`).join("")}${cells.join("")}</div>`;
+  }).join("") || `<div class="card"><div class="empty">Nothing coming up yet.</div></div>`;
+}
+function jumpTo(date){
+  setView("table");
+  const card = [...document.querySelectorAll("#list .ev")].find(el => el.dataset.date === date);
+  if (!card) return;
+  card.scrollIntoView({ block: "center", behavior: "smooth" });
+  card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1600);
+  if (card.classList.contains("more") && card.querySelector(".evmore").hidden) openEv(card);
+}
+function setView(v){
+  VIEW = v; try { localStorage.setItem(VK, v); } catch {}
+  render();
+}
 function openEv(el){
   const box = el.querySelector(".evmore"), open = !box.hidden;
   box.hidden = open; el.classList.toggle("open", !open); el.setAttribute("aria-expanded", String(!open));
@@ -140,6 +218,19 @@ async function boot(){
     if (!r.ok) throw new Error(D.error || "Error " + r.status);
     if (!(D.entries || []).length) D.entries = fromConfig();
     render();
+    // A phone will not subscribe to https, it wants webcal. Say so rather than
+    // handing over a link that downloads one stale copy and never updates.
+    $("subLink").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const url = API + "?a=ics&section=" + encodeURIComponent(KEY);
+      const webcal = location.origin.replace(/^https?:/, "webcal:") + url;
+      $("subHelp").hidden = false;
+      $("subHelp").innerHTML = `<b>Add these dates to your own calendar.</b>
+        <p class="small" style="margin:.5rem 0 .3rem">On a phone, open this and your calendar will offer to subscribe. It keeps itself up to date as the club changes things.</p>
+        <span class="link">${esc(webcal)}</span>
+        <p class="small" style="margin:.5rem 0 0"><a href="${esc(webcal)}">Open it now</a>, or <a href="${esc(url)}">download a copy</a> that will not update.</p>`;
+      $("subHelp").scrollIntoView({ block: "nearest" });
+    });
   } catch (e) { showErr("The calendar could not be loaded. " + e.message); }
 }
 boot();

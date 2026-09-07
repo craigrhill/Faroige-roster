@@ -898,6 +898,12 @@ var rosterFallback = () => ({ people: [] });
 var calendarFallback = () => ({ entries: [] });
 var MAX_ENTRIES = 200;
 var isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
+var isTime = (t) => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+var cleanTimes = (o, from) => {
+  if (isTime(from.startTime)) o.startTime = from.startTime;
+  if (isTime(from.endTime)) o.endTime = from.endTime;
+  return o;
+};
 var clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 var sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
 var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, secretary: !!p.secretary });
@@ -937,6 +943,59 @@ function createHandler(storeFactory) {
     try {
       const store = storeFactory();
       const sec = await secret(store);
+      if (req.method === "GET" && a === "ics") {
+        const k = url.searchParams.get("section") || "";
+        if (!isKey(k)) return fail(400, "Bad club.");
+        const [{ doc: sect }, { doc: cal }] = [await readDoc(store, "section/" + k, sectionFallback), await readDoc(store, "calendar", calendarFallback)];
+        const host = url.host;
+        const esc = (v) => String(v == null ? "" : v).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+        const fold = (line) => {
+          const out = [];
+          let buf = "";
+          for (const ch of line) {
+            if (Buffer.byteLength(buf + ch) > 74) {
+              out.push(buf);
+              buf = " ";
+            }
+            buf += ch;
+          }
+          out.push(buf);
+          return out.join("\r\n");
+        };
+        const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]|\.\d{3}/g, "");
+        const dayAfter = (d) => {
+          const x = /* @__PURE__ */ new Date(d + "T12:00:00Z");
+          x.setUTCDate(x.getUTCDate() + 1);
+          return x.toISOString().slice(0, 10);
+        };
+        const plain = (d) => d.replace(/-/g, "");
+        const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//" + host + "//club rota//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Club calendar"];
+        for (const e of cal.entries || []) {
+          const start = e.startTime || (e.kind === "m" ? sect.startTime : null);
+          const end = e.endTime || (e.kind === "m" ? sect.endTime : null);
+          const timed = !e.endDate && isTime(start);
+          lines.push("BEGIN:VEVENT", `UID:${e.id}@${host}`, `DTSTAMP:${stamp}`);
+          if (timed) {
+            lines.push(`DTSTART:${plain(e.date)}T${start.replace(":", "")}00`);
+            lines.push(`DTEND:${plain(e.date)}T${(isTime(end) ? end : start).replace(":", "")}00`);
+          } else {
+            lines.push(`DTSTART;VALUE=DATE:${plain(e.date)}`);
+            lines.push(`DTEND;VALUE=DATE:${plain(dayAfter(e.endDate || e.date))}`);
+          }
+          lines.push(`SUMMARY:${esc(e.title)}`);
+          if (e.location) lines.push(`LOCATION:${esc(e.location)}`);
+          if (e.details) lines.push(`DESCRIPTION:${esc(e.details)}`);
+          if (e.off) lines.push("STATUS:CANCELLED");
+          lines.push("END:VEVENT");
+        }
+        lines.push("END:VCALENDAR");
+        return new Response(lines.map(fold).join("\r\n") + "\r\n", { status: 200, headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Content-Disposition": 'inline; filename="club-calendar.ics"',
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*"
+        } });
+      }
       if (req.method === "GET" && a === "public") {
         const k = url.searchParams.get("section") || "";
         if (!isKey(k)) return fail(400, "Bad club.");
@@ -956,6 +1015,8 @@ function createHandler(storeFactory) {
             off: !!e.off,
             need: e.need ?? null,
             needTrained: e.needTrained ?? null,
+            startTime: e.startTime || null,
+            endTime: e.endTime || null,
             on: on.length,
             trained: on.filter((id) => trainedIds.has(id)).length
           };
@@ -964,6 +1025,8 @@ function createHandler(storeFactory) {
           required: sect.required,
           requiredTrained: sect.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
           requiredTrainedEvents: sect.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
+          startTime: sect.startTime || null,
+          endTime: sect.endTime || null,
           entries
         });
       }
@@ -1041,6 +1104,8 @@ function createHandler(storeFactory) {
             required: doc.required,
             requiredTrained: doc.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
             requiredTrainedEvents: doc.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
+            startTime: doc.startTime || null,
+            endTime: doc.endTime || null,
             slots: doc.slots,
             updatedAt: doc.updatedAt || null
           };
@@ -1093,6 +1158,12 @@ function createHandler(storeFactory) {
         const wantE = "requiredTrainedEvents" in b ? num(b.requiredTrainedEvents) : null;
         if (wantN !== null && !(wantN >= 1 && wantN <= 9)) return fail(400, "Leaders needed must be 1 to 9.");
         for (const v of [wantT, wantE]) if (v !== null && !(v >= 0 && v <= 9)) return fail(400, "Trained leaders needed must be 0 to 9.");
+        const times = {};
+        for (const k of ["startTime", "endTime"]) if (k in b) {
+          if (b[k] === "" || b[k] === null) times[k] = null;
+          else if (isTime(b[k])) times[k] = b[k];
+          else return fail(400, "A time must look like 19:30.");
+        }
         const cur = await readDoc(store, "section/" + b.section, sectionFallback);
         const finalN = wantN ?? cur.doc.required;
         const finalT = wantT ?? (cur.doc.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
@@ -1106,6 +1177,10 @@ function createHandler(storeFactory) {
           d.required = required;
           d.requiredTrained = requiredTrained;
           d.requiredTrainedEvents = requiredTrainedEvents;
+          for (const [k, v] of Object.entries(times)) {
+            if (v === null) delete d[k];
+            else d[k] = v;
+          }
           return d;
         });
         return json(200, { section: doc });
@@ -1136,6 +1211,7 @@ function createHandler(storeFactory) {
           if (needTrained != null && needTrained >= 0 && needTrained <= 9) entry.needTrained = needTrained;
           if (entry.need != null && entry.needTrained > entry.need) entry.needTrained = entry.need;
           if (row.off) entry.off = true;
+          cleanTimes(entry, row);
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

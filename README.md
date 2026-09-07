@@ -150,6 +150,13 @@ rota page under Links to share:
 * `/events?gaps` marks each night "Needs 2 more" and totals them up. That is
   the one to send when chasing leaders.
 
+Either can be read as a **Table** of nights or as a **Calendar** of months,
+and either prints: the toolbar drops out, descriptions are opened, and it
+comes out as rows on a rule rather than cards with shadows on them.
+**Subscribe** hands over a `webcal:` address that a phone's calendar will
+follow and keep up to date, with a plain download beside it for anyone whose
+calendar will not.
+
 The whole site is noindexed, so neither will turn up in a search: they are
 links to hand out, not a website.
 
@@ -181,7 +188,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 138 offline cases
+    npm run test:function     # 155 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

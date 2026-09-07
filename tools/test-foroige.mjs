@@ -308,6 +308,39 @@ r = await call("POST", "?a=public&section=club");
 ok("it is read only: a POST is not the public route", r.status !== 200, true);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
 
+// Times, and the feed a phone can subscribe to.
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", startTime: "19:30", endTime: "22:00" } });
+ok("the club's night has a start and an end", [r.status, r.j.section.startTime, r.j.section.endTime], [200, "19:30", "22:00"]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", startTime: "half seven" } });
+ok("a time that is not a time is refused", [r.status, r.j.error], [400, "A time must look like 19:30."]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
+  { kind: "m", date: "2030-08-07", title: "Club night" },
+  { kind: "e", date: "2030-08-14", title: "Disco; and, chips", location: "The hall", details: "Line one\nline two", startTime: "18:00", endTime: "20:30" },
+  { kind: "e", date: "2030-08-21", title: "Weekend away", endDate: "2030-08-23" },
+  { kind: "m", date: "2030-08-28", title: "Cancelled night", off: true }
+] } });
+ok("a single night can carry its own times", [r.status, r.j.calendar.entries[1].startTime, r.j.calendar.entries[1].endTime], [200, "18:00", "20:30"]);
+const ics = await handler(new Request(base + "?a=ics&section=club"));
+const text = await ics.text();
+ok("the feed is served as a calendar", [ics.status, ics.headers.get("content-type")], [200, "text/calendar; charset=utf-8"]);
+ok("it needs no token", text.startsWith("BEGIN:VCALENDAR"), true);
+ok("one entry each, and it closes", [(text.match(/BEGIN:VEVENT/g) || []).length, text.trim().endsWith("END:VCALENDAR")], [4, true]);
+ok("a club night takes the club's times", /DTSTART:20300807T193000/.test(text) && /DTEND:20300807T220000/.test(text), true);
+ok("a night of its own overrides them", /DTSTART:20300814T180000/.test(text) && /DTEND:20300814T203000/.test(text), true);
+ok("something running more than a day is all day, ending the morning after", /DTSTART;VALUE=DATE:20300821/.test(text) && /DTEND;VALUE=DATE:20300824/.test(text), true);
+ok("a called-off night is marked cancelled rather than dropped", /STATUS:CANCELLED/.test(text), true);
+ok("semicolons and commas in a name are escaped", /SUMMARY:Disco\\; and\\, chips/.test(text), true);
+// clip() flattens whitespace on the way in, so a description is one line by
+// the time it reaches the feed and there is no line break left to escape.
+ok("a description arrives as one line", /DESCRIPTION:Line one line two/.test(text), true);
+ok("every line is folded to the limit", text.split("\r\n").every(l => Buffer.byteLength(l) <= 75), true);
+ok("lines end the way iCalendar wants", text.includes("\r\n"), true);
+ok("no names in the feed either", /Coord|Trained One|Helper|Plain/.test(text), false);
+{ const bad = await handler(new Request(base + "?a=ics&section=Not%20A%20Key")); ok("a bad club key is refused", bad.status, 400); }
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", startTime: "", endTime: "" } });
+ok("the club's times can be cleared again", [r.j.section.startTime, r.j.section.endTime], [undefined, undefined]);
+
 // Codes, roles and removal.
 r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); const newCode = r.j.code;
 ok("recode returns a fresh code", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(newCode) && newCode !== helperCode, true);

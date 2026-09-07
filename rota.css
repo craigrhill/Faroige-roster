@@ -78,12 +78,53 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .ev.isoff .evtitle{text-decoration:line-through}
 .ev.isoff .evtitle .badge{text-decoration:none}
 
+.toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:0 0 1rem}
+.seg{display:inline-flex;border:1px solid var(--stone-200);border-radius:999px;overflow:hidden;background:#fff}
+.seg button{font:inherit;font-size:.9rem;font-weight:600;border:0;background:none;color:var(--stone-600);padding:.45em 1.1em;cursor:pointer}
+.seg button.on{background:var(--green-700);color:#fff}
+.toolbar .btn{margin-left:auto}
+.toolbar .btn + .btn{margin-left:0}
+
+/* A month at a time. Weeks start on Monday, the way a term is talked about. */
+.asgrid .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;background:var(--stone-100);border:1px solid var(--stone-100);border-radius:12px;overflow:hidden;margin-bottom:1rem}
+.dow{background:var(--stone-50);text-align:center;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--stone-600);padding:.4rem 0}
+.cell{background:#fff;min-height:3.4rem;padding:.25rem .3rem;font-size:.8rem}
+.cell.out{background:var(--stone-50)}
+.cell .n{display:block;font-weight:600;color:var(--stone-600)}
+.cell .what{display:block;margin-top:.1rem;font-size:.68rem;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.cell.has,.cell.short,.cell.isoff{cursor:pointer}
+.cell.has{background:var(--green-100)}
+.cell.has .n{color:var(--green-700)}
+.cell.short{background:#FBE9EC}
+.cell.short .n{color:#7A1F2E}
+.cell.isoff{background:var(--stone-50)}
+.cell.isoff .what{text-decoration:line-through;color:var(--stone-400)}
+.cell:focus-visible{outline:2px solid var(--green-500);outline-offset:-2px}
+.ev.flash{border-color:var(--green-500);box-shadow:0 0 0 3px var(--green-100)}
+.printhead{display:none}
+
 @media print{
-  .appbar,.noprint,.chev,footer,#callout{display:none!important}
-  body{background:#fff}
-  .ev{box-shadow:none;border:1px solid #ddd;break-inside:avoid;margin-bottom:.35rem}
-  .evmore[hidden]{display:block!important}
+  .appbar,.noprint,.chev,footer,#callout,.status{display:none!important}
+  body{background:#fff;color:#000;font-size:11pt}
   .wrap{width:100%}
+  h1{font-size:16pt;margin:0 0 .1rem}
+  .printhead{display:block;font-size:9pt;color:#444;margin:0 0 .7rem;padding-bottom:.35rem;border-bottom:1px solid #999}
+  .month{color:#000;margin:.7rem 0 .25rem;break-after:avoid;font-size:9pt}
+  /* The table prints as rows on a rule, not as cards with shadows on them. */
+  .ev{box-shadow:none;border:0;border-bottom:1px solid #ddd;border-radius:0;padding:.3rem 0;margin:0;break-inside:avoid;gap:.6rem}
+  .evdate{width:2.8rem;border:0;background:none;padding:0;text-align:left}
+  .evdate b{font-size:12pt}
+  .evdate span{font-size:7pt}
+  .evtitle{font-size:11pt;margin:0}
+  .evsub{font-size:9pt;color:#333}
+  .evmore[hidden]{display:block!important}
+  .detail{font-size:9pt;color:#333;margin:.1rem 0 0}
+  .badge{border:1px solid #bbb;background:none;color:#333}
+  .asgrid .grid{border-color:#999;background:#999;break-inside:avoid}
+  .cell{min-height:3rem}
+  .cell.has,.cell.short{background:#eee}
+  .cell.has .n,.cell.short .n{color:#000}
+  a[href]:after{content:""}
 }
 .status{font-size:.74rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.2em .6em;border-radius:999px;white-space:nowrap}
 .status.gap{background:#FBE9EC;color:#7A1F2E}

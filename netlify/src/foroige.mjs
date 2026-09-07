@@ -30,12 +30,14 @@
 //                   time: a newer one means start again
 //   roster          { people: [{ id, name, sections, trained, secretary, codeHash }] }
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
-//                                 details, need, needTrained, off }] }
+//                                 details, need, needTrained, off,
+//                                 startTime, endTime }] }
 //                   The club's own calendar, kept by the coordinator. kind is
 //                   "m" for a club night and "e" for an event; that is what
 //                   decides whether the training rule applies. While this is
 //                   empty the pages fall back to rota-config.json.
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
+//                     startTime, endTime,
 //                     slots: { <slotId>: { who: [personId] } } }
 //                   Only who is on a night lives here. What it needs, and
 //                   whether it is on at all, are on its calendar entry.
@@ -50,6 +52,7 @@
 // API (all JSON; auth by the x-rota-token header):
 //   OPTIONS                                         204
 //   GET    ?a=public&section=k   (no token)         { required, ..., entries }
+//   GET    ?a=ics&section=k      (no token)         text/calendar
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=admin-login x-admin-password {name,sections} { token, me, created }
 //                        The coordinator's way in: her name and the password,
@@ -171,6 +174,8 @@ const rosterFallback = () => ({ people: [] });
 const calendarFallback = () => ({ entries: [] });
 const MAX_ENTRIES = 200;
 const isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
+const isTime = (t) => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+const cleanTimes = (o, from) => { if (isTime(from.startTime)) o.startTime = from.startTime; if (isTime(from.endTime)) o.endTime = from.endTime; return o; };
 const clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 const sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
 // Which default a night takes, the club night one or the events one, is read
@@ -201,6 +206,51 @@ export function createHandler(storeFactory) {
       const store = storeFactory();
       const sec = await secret(store);
 
+      // The same calendar as a feed a phone can subscribe to. Times are
+      // floating, with no zone on them: everyone reading this is standing in
+      // the same town, and a floating time shows as itself wherever it lands,
+      // which is what a club night at half seven means.
+      if (req.method === "GET" && a === "ics") {
+        const k = url.searchParams.get("section") || "";
+        if (!isKey(k)) return fail(400, "Bad club.");
+        const [{ doc: sect }, { doc: cal }] = [await readDoc(store, "section/" + k, sectionFallback), await readDoc(store, "calendar", calendarFallback)];
+        const host = url.host;
+        const esc = (v) => String(v == null ? "" : v).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+        // An iCalendar line is folded at 75 octets, continued by a space.
+        const fold = (line) => {
+          const out = []; let buf = "";
+          for (const ch of line) { if (Buffer.byteLength(buf + ch) > 74) { out.push(buf); buf = " "; } buf += ch; }
+          out.push(buf); return out.join("\r\n");
+        };
+        const stamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, "");
+        const dayAfter = (d) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+        const plain = (d) => d.replace(/-/g, "");
+        const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//" + host + "//club rota//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Club calendar"];
+        for (const e of cal.entries || []) {
+          const start = e.startTime || (e.kind === "m" ? sect.startTime : null);
+          const end = e.endTime || (e.kind === "m" ? sect.endTime : null);
+          const timed = !e.endDate && isTime(start);
+          lines.push("BEGIN:VEVENT", `UID:${e.id}@${host}`, `DTSTAMP:${stamp}`);
+          if (timed) {
+            lines.push(`DTSTART:${plain(e.date)}T${start.replace(":", "")}00`);
+            lines.push(`DTEND:${plain(e.date)}T${(isTime(end) ? end : start).replace(":", "")}00`);
+          } else {
+            lines.push(`DTSTART;VALUE=DATE:${plain(e.date)}`);
+            lines.push(`DTEND;VALUE=DATE:${plain(dayAfter(e.endDate || e.date))}`);
+          }
+          lines.push(`SUMMARY:${esc(e.title)}`);
+          if (e.location) lines.push(`LOCATION:${esc(e.location)}`);
+          if (e.details) lines.push(`DESCRIPTION:${esc(e.details)}`);
+          if (e.off) lines.push("STATUS:CANCELLED");
+          lines.push("END:VEVENT");
+        }
+        lines.push("END:VCALENDAR");
+        return new Response(lines.map(fold).join("\r\n") + "\r\n", { status: 200, headers: {
+          "Content-Type": "text/calendar; charset=utf-8",
+          "Content-Disposition": 'inline; filename="club-calendar.ics"',
+          "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
+      }
+
       // The parents' calendar, and the link for chasing volunteers. Open to
       // anyone who has the address. It carries what is on and how short each
       // night is, as numbers. No names, no ids, nothing about who: that is
@@ -217,10 +267,12 @@ export function createHandler(storeFactory) {
           return { kind: e.kind, date: e.date, endDate: e.endDate || null, title: e.title,
             location: e.location || "", details: e.details || "", off: !!e.off,
             need: e.need ?? null, needTrained: e.needTrained ?? null,
+            startTime: e.startTime || null, endTime: e.endTime || null,
             on: on.length, trained: on.filter((id) => trainedIds.has(id)).length };
         });
         return json(200, { required: sect.required, requiredTrained: sect.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
-          requiredTrainedEvents: sect.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS, entries });
+          requiredTrainedEvents: sect.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
+          startTime: sect.startTime || null, endTime: sect.endTime || null, entries });
       }
 
       // Unauthenticated entry points.
@@ -293,6 +345,7 @@ export function createHandler(storeFactory) {
           const { doc } = await readDoc(store, "section/" + k, sectionFallback);
           sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
             requiredTrainedEvents: doc.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
+            startTime: doc.startTime || null, endTime: doc.endTime || null,
             slots: doc.slots, updatedAt: doc.updatedAt || null };
         }
         // The coordinator sees everyone. A volunteer sees the people who share
@@ -364,6 +417,8 @@ export function createHandler(storeFactory) {
         const wantE = "requiredTrainedEvents" in b ? num(b.requiredTrainedEvents) : null;
         if (wantN !== null && !(wantN >= 1 && wantN <= 9)) return fail(400, "Leaders needed must be 1 to 9.");
         for (const v of [wantT, wantE]) if (v !== null && !(v >= 0 && v <= 9)) return fail(400, "Trained leaders needed must be 0 to 9.");
+        const times = {};
+        for (const k of ["startTime", "endTime"]) if (k in b) { if (b[k] === "" || b[k] === null) times[k] = null; else if (isTime(b[k])) times[k] = b[k]; else return fail(400, "A time must look like 19:30."); }
         const cur = await readDoc(store, "section/" + b.section, sectionFallback);
         const finalN = wantN ?? cur.doc.required;
         const finalT = wantT ?? (cur.doc.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
@@ -375,6 +430,7 @@ export function createHandler(storeFactory) {
           const requiredTrainedEvents = wantE ?? (d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS);
           if (requiredTrained > required || requiredTrainedEvents > required) return false;
           d.required = required; d.requiredTrained = requiredTrained; d.requiredTrainedEvents = requiredTrainedEvents;
+          for (const [k, v] of Object.entries(times)) { if (v === null) delete d[k]; else d[k] = v; }
           return d;
         });
         return json(200, { section: doc });
@@ -407,6 +463,7 @@ export function createHandler(storeFactory) {
           // Called off, but kept: deleting it would take everyone already down
           // for it with it, and next term it may well be back.
           if (row.off) entry.off = true;
+          cleanTimes(entry, row);
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

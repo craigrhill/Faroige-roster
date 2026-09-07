@@ -143,17 +143,18 @@ function def(e){
   const n = D.sections[keys()[0]] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0 };
   return { need: n.required, needTrained: e.kind === "e" ? n.requiredTrainedEvents : n.requiredTrained };
 }
-const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "", need: e.need ?? null, needTrained: e.needTrained ?? null, off: !!e.off }));
+const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "", need: e.need ?? null, needTrained: e.needTrained ?? null, off: !!e.off, startTime: e.startTime || "", endTime: e.endTime || "" }));
 const keys = () => C.settings.sections.map(x => x.key);
 async function load(){
   showErr(""); D = await api("GET", "?sections=" + keys().join(","));
+  if (canManage()) { await seedTimesOnce(); }
   if (!calDirty) { CAL = calFromServer().length || (D.calendar && D.calendar.updatedAt) ? calFromServer() : fromConfig(); openRows = new Set(); }
   $("gate").hidden = true; $("app").hidden = false; render();
 }
 const iso = (d) => d.toISOString().slice(0, 10);
 function addEntry(kind){
   const d = new Date(); d.setDate(d.getDate() + 7);
-  CAL.push({ kind, date: iso(d), endDate: "", title: kind === "m" ? "Club night" : "", location: "", details: "", need: null, needTrained: null, off: false });
+  CAL.push({ kind, date: iso(d), endDate: "", title: kind === "m" ? "Club night" : "", location: "", details: "", need: null, needTrained: null, off: false, startTime: "", endTime: "" });
   calDirty = true;
   // A new night is the one case that wants every box at once: it has nothing
   // to show yet.
@@ -176,7 +177,10 @@ function removeEntry(i){ if (!confirm("Take " + (CAL[i].title || "this night") +
 function summary(e, i){
   const sec0 = C.settings.sections[0] || {};
   const where = e.location || (e.kind === "m" ? sec0.venue : "");
-  const sub = [e.kind === "m" ? sec0.time : "", where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
+  const clubTimes = D.sections[keys()[0]] || {};
+  const runs = e.startTime ? e.startTime + (e.endTime ? " to " + e.endTime : "")
+    : e.kind === "m" ? (clubTimes.startTime ? clubTimes.startTime + (clubTimes.endTime ? " to " + clubTimes.endTime : "") : sec0.time) : "";
+  const sub = [runs, where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
   const n = def(e), need = e.need ?? n.need, needT = e.needTrained ?? n.needTrained;
   return `<div class="slot-head">
       <div><span class="when">${esc(e.date ? fmt(e.date) : "No date")}</span> <span class="sub">${esc(e.title || "Not named yet")}${sub ? ", " + esc(sub) : ""}</span></div>
@@ -185,16 +189,49 @@ function summary(e, i){
     ${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}
     <p class="rowneeds">${need} leader${need === 1 ? "" : "s"}${needT ? `, ${needT} with ${esc(TRAIN.short)}` : ""}${e.need == null && e.needTrained == null ? "" : ` <span class="custom">just this one</span>`}</p>`;
 }
+// "7:30 to 10:00 pm" out of the setup file, as two clock times, so the boxes
+// start filled in rather than empty.
+function seedTimes(){
+  const t = (C.settings.sections[0] || {}).time || "";
+  const parts = [...t.matchAll(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/gi)];
+  if (parts.length < 2) return null;
+  const pm = /pm/i.test(t);
+  const at = (m, assumePm) => {
+    let h = +m[1]; const mm = m[2] || "00";
+    const isPm = m[3] ? /pm/i.test(m[3]) : assumePm;
+    if (isPm && h < 12) h += 12;
+    if (!isPm && h === 12) h = 0;
+    return String(h).padStart(2, "0") + ":" + mm;
+  };
+  return { startTime: at(parts[0], pm && +parts[0][1] < 12 && +parts[0][1] >= 6), endTime: at(parts[1], pm) };
+}
 function renderNums(){
   const one = C.settings.sections.length === 1;
   $("nums").innerHTML = C.settings.sections.map(x => {
-    const n = D.sections[x.key] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0 };
+    const n = D.sections[x.key] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, startTime: "", endTime: "" };
     return `${one ? "" : `<h3 class="small" style="margin:.6rem 0 .3rem">${esc(x.name)}</h3>`}
       <div class="needs"><label class="need"><span>Leaders on every club night and event</span><input type="number" min="1" max="9" value="${n.required}" onchange="setNums('${esc(x.key)}','required',this.value)"></label></div>
       <div class="needs"><label class="need"><span>How many of them hold <span data-training-label>the training</span>, on a club night</span><input type="number" min="0" max="9" value="${n.requiredTrained}" onchange="setNums('${esc(x.key)}','requiredTrained',this.value)"></label></div>
-      <div class="needs"><label class="need"><span>and at an event</span><input type="number" min="0" max="9" value="${n.requiredTrainedEvents}" onchange="setNums('${esc(x.key)}','requiredTrainedEvents',this.value)"></label></div>`;
+      <div class="needs"><label class="need"><span>and at an event</span><input type="number" min="0" max="9" value="${n.requiredTrainedEvents}" onchange="setNums('${esc(x.key)}','requiredTrainedEvents',this.value)"></label></div>
+      <div class="needs"><label class="need"><span>A club night runs from</span><input type="time" value="${esc(n.startTime || "")}" onchange="setNums('${esc(x.key)}','startTime',this.value)"><span>to</span><input type="time" value="${esc(n.endTime || "")}" onchange="setNums('${esc(x.key)}','endTime',this.value)"></label></div>`;
   }).join("");
-  $("numsNote").textContent = "This is what every night asks for. A single night that is different is set against it on the calendar below.";
+  $("numsNote").textContent = "This is what every night asks for, and when it runs. A single night that is different is set against it on the calendar below. The times are what the calendar feed hands people's phones.";
+}
+// The setup file knows when the club meets, so the first time this page is
+// opened those times are written through rather than only shown. Filling the
+// boxes and leaving them unsaved looked done and was not: the calendar feed
+// would have handed out all-day entries with no times on them.
+async function seedTimesOnce(){
+  for (const x of C.settings.sections) {
+    const n = D.sections[x.key] || {};
+    if (n.startTime || n.endTime) continue;
+    const t = seedTimes(); if (!t) continue;
+    try {
+      const r = await api("POST", "?a=required", { section: x.key, ...t });
+      D.sections[x.key] = { ...D.sections[x.key], ...r.section };
+      $("numsMsg").textContent = "Times taken from the setup file. Change them here if they are wrong.";
+    } catch {}
+  }
 }
 const setNums = (key, field, v) => guarded(async () => {
   $("numsMsg").textContent = ""; $("numsMsg").className = "msg";
@@ -224,6 +261,7 @@ function renderCal(){
       <label class="pick"><span>Leaders</span><input type="number" min="1" max="9" value="${e.need ?? ""}" placeholder="${def(e).need}" oninput="setEntry(${i},'need',this.value)" aria-label="Leaders needed"></label>
       <label class="pick"><span>of them with ${esc(TRAIN.short)}</span><input type="number" min="0" max="9" value="${e.needTrained ?? ""}" placeholder="${def(e).needTrained}" oninput="setEntry(${i},'needTrained',this.value)" aria-label="Trained leaders needed"></label>
       <span data-usual="${i}">${usualText(e)}</span>
+      <label class="pick"><span>from</span><input type="time" value="${esc(e.startTime || "")}" oninput="setEntry(${i},'startTime',this.value)" aria-label="Starts"><span>to</span><input type="time" value="${esc(e.endTime || "")}" oninput="setEntry(${i},'endTime',this.value)" aria-label="Ends"></label>
       <label class="pick"><input type="checkbox" ${e.off ? "checked" : ""} onchange="setEntry(${i},'off',this.checked)"><span>Called off</span></label>
       <span style="margin-left:auto"><button class="btn" onclick="toggleRow(${i})">Done</button></span>
     </div>

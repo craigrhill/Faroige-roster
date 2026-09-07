@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 138 cases
+    tools/test-foroige.mjs  offline harness, 155 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -107,6 +107,25 @@ line of when and where beside it, and a badge for the kind unless the name
 already says it. Anything with more to say opens on a tap, so the page stays
 scannable. It prints: the toolbar and the chevrons go, and everything that
 opens is opened.
+
+**Table or Calendar**, remembered in `localStorage` under `foroige-view`.
+Table is the cards; Calendar is a month grid with weeks starting on Monday,
+marked days carrying the name, and a tap on one going to that card in the
+table and opening it. Print takes whichever is on screen.
+
+**A feed at `?a=ics&section=<key>`**, no token, `text/calendar`. Times are
+floating, with no zone: everyone reading it is in the same town, and a
+floating time shows as itself wherever it lands, which is what half seven
+means. A night uses its own times, else the club's, else it is all day.
+Lines are folded at 75 octets and `; , \` are escaped, because a name with a
+comma in it silently breaks a feed otherwise.
+
+**Times live in the store, not the setup file.** `startTime` and `endTime` on
+`section/<key>` for the club, optional on an entry for a night that differs.
+The roster page seeds the club's pair from the `time` string in
+`rota-config.json` **and writes them through** the first time it is opened:
+filling the boxes without saving looked done and was not, and the feed would
+have handed out all-day entries.
 
 One page, two readings, on the same data:
 
