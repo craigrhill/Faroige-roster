@@ -816,7 +816,7 @@ var DEFAULT_REQUIRED_TRAINED = 1;
 var DEFAULT_REQUIRED_TRAINED_EVENTS = 0;
 var MAX_BULK = 100;
 var ADMIN_TRIES = 5;
-var ADMIN_LOCK_MINUTES = 15;
+var ADMIN_LOCKS = [1, 5, 15];
 var headers = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -832,10 +832,11 @@ function safeEqual(a, b) {
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
 }
+var adminPw = () => (process.env.ADMIN_PASSWORD || "").trim();
 function adminOk(req) {
-  const envPw = process.env.ADMIN_PASSWORD;
+  const envPw = adminPw();
   if (!envPw) return false;
-  return safeEqual(req.headers.get("x-admin-password") || "", envPw);
+  return safeEqual((req.headers.get("x-admin-password") || "").trim(), envPw);
 }
 async function readDoc(store, key, fallback) {
   const r = await store.getWithMetadata(key, { type: "json", consistency: "strong" });
@@ -966,15 +967,16 @@ function createHandler(storeFactory) {
         });
       }
       if (req.method === "POST" && a === "admin-login") {
-        if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
-        const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0 }));
+        if (!adminPw()) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
+        const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }));
         const waitMs = (guard.doc.until || 0) - Date.now();
         if (waitMs > 0) return fail(429, `Too many wrong tries. Signing in is shut for another ${Math.ceil(waitMs / 6e4)} minute${Math.ceil(waitMs / 6e4) === 1 ? "" : "s"}.`);
         if (!adminOk(req)) {
-          await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => {
+          await update(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }), (d) => {
             d.fails = (d.fails || 0) + 1;
             if (d.fails >= ADMIN_TRIES) {
-              d.until = Date.now() + ADMIN_LOCK_MINUTES * 6e4;
+              d.until = Date.now() + ADMIN_LOCKS[Math.min(d.locks || 0, ADMIN_LOCKS.length - 1)] * 6e4;
+              d.locks = (d.locks || 0) + 1;
               d.fails = 0;
             }
             return d;
@@ -982,7 +984,7 @@ function createHandler(storeFactory) {
           await new Promise((r) => setTimeout(r, 250));
           return fail(401, "Wrong password.");
         }
-        await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => d.fails || d.until ? { fails: 0, until: 0 } : false);
+        await update(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }), (d) => d.fails || d.until || d.locks ? { fails: 0, until: 0, locks: 0 } : false);
         const b2 = await body(req);
         const name = cleanName(b2 && b2.name);
         if (!name) return fail(400, "A name is needed.");

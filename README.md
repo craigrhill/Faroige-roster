@@ -127,16 +127,16 @@ remove its ticks, and the page says so before it does.
 3. **First run.** Open `roster.html` and sign in with the coordinator's name
    and that password. The first name entered becomes the coordinator; from
    then on those same two things get her in on any phone, with no code or
-   link to keep. Five wrong tries shuts it for fifteen minutes, so a guessed
-   password is not a quick way in. That creates the coordinator and shows
-   their code. Everything after that happens on the roster page and the
-   password is not needed again.
+   link to keep. Five wrong tries shuts it: for a minute, then five, then
+   fifteen if it keeps happening, so a fumble costs a minute but guessing is
+   hopeless.
 
-4. **The leaders.** On the roster page, "Add a list of names at once" takes
-   the whole list pasted in, one name per line, with a `*` on the end of the
-   line for anyone who holds the training. Numbering and bullets are
-   stripped, so a list copied out of a document works as it stands. Everyone
-   gets a code, all shown together, once.
+4. **The volunteers.** On the roster page, "Add a list of names at once"
+   takes the whole list pasted in, one name per line, with a `*` on the end
+   of the line for anyone who holds the training. Numbering and bullets are
+   stripped, so a list copied out of a document works as it stands. Each of
+   them gets a link, all shown together, once. The coordinator is the only
+   one who signs in by name and password; they never type anything.
 
 ## The public page
 
@@ -159,6 +159,13 @@ directory, noindexes the whole site, and points the bare address at the
 rota. Blobs needs no setup; it is on for every site. The only thing to add
 by hand is `ADMIN_PASSWORD`, scoped to Functions.
 
+**If the right password is refused**, note which answer comes back. "Wrong
+password." means the function can read `ADMIN_PASSWORD` and the value it
+holds is not what is being typed: check the **production** context value, and
+redeploy, because changing a variable does not reach a function already
+deployed. "No admin password is set" means it cannot read it at all, which is
+usually the scope.
+
 Confirm the function is up before handing it to anyone: `OPTIONS` on
 `/.netlify/functions/foroige` returns 204, and a `GET` with no token returns
 401 with `{"error":"Please sign in."}`. A 401 rather than a 500 proves the
@@ -169,7 +176,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 132 offline cases
+    npm run test:function     # 136 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

@@ -31,12 +31,23 @@ for (let i = 0; i < 3; i++) await call("POST", "?a=admin-login", { admin: "wrong
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
 ok("the fifth wrong try is the last one allowed", r.status, 401);
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
-ok("after that it is shut, and says for how long", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
+ok("after that it is shut, and the first shutting is a short one", [r.status, /shut for another 1 minute\b/.test(r.j.error)], [429, true]);
 r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord" } });
 ok("and the right password is turned away too while it is shut", r.status, 429);
-{ const g = JSON.parse(store._map.get("admin-tries").value); g.until = Date.now() - 1; store._map.set("admin-tries", { value: JSON.stringify(g), etag: "expired" }); }
+const reopen = () => { const g = JSON.parse(store._map.get("admin-tries").value); g.until = Date.now() - 1; store._map.set("admin-tries", { value: JSON.stringify(g), etag: "reopen" + Math.random() }); };
+reopen();
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
 ok("once the wait is over it opens again", r.status, 401);
+// Keep getting it wrong and the shuttings lengthen. All wrong on purpose: a
+// success here would create people and knock every later case off its footing.
+// Keep going wrong until it shuts, however many that takes from here.
+const untilShut = async () => { let x; for (let i = 0; i < 9; i++) { x = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } }); if (x.status === 429) break; } return x; };
+r = await untilShut();
+ok("a second shutting lasts five minutes", [r.status, /shut for another 5 minutes/.test(r.j.error)], [429, true]);
+reopen();
+r = await untilShut();
+ok("and a third, fifteen", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
+reopen();
 r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
 ok("her name and the password make the coordinator, in the club", [r.status, r.j.me.secretary, r.j.me.sections, r.j.created], [200, true, ["club"], true]);
 ok("and sign her straight in, with no code to copy out", [typeof r.j.token, "code" in r.j], ["string", false]);
@@ -322,6 +333,15 @@ ok("removing someone takes them off the roster", [r.status, r.j.people.some(p =>
 r = await call("GET", "?sections=club", { token: coord }); ok("a removed person's token is revoked", r.status, 401);
 r = await call("GET", "?sections=club", { token: trained });
 ok("and their ticks are gone from the night", r.j.sections.club.slots[night].who.includes(coordId), false);
+
+// Last, because signing in successfully adds a person.
+reopen();
+r = await call("POST", "?a=admin-login", { admin: "  admin-for-test  ", body: { name: "Spacey" } });
+ok("a password stored with spaces round it still gets in, which Netlify makes easy to do", r.status, 200);
+for (let i = 0; i < 5; i++) await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Spacey" } });
+reopen();
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Spacey" } });
+ok("and getting it right wipes the record of the shuttings, not just the tries", [r.status, JSON.parse(store._map.get("admin-tries").value).locks], [200, 0]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

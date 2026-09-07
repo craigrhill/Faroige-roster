@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 132 cases
+    tools/test-foroige.mjs  offline harness, 136 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -196,11 +196,20 @@ this up?" with the admin password. The API is documented at the top of
   setup returns 503 saying so, which is the safe way round for a public repo.
   Never put the password, or a hash of it, in this repo: it is public, and a
   hash of anything short is the password.
-* **First-time setup is throttled.** Five wrong passwords and it answers 429
-  for fifteen minutes, counted in the store under `admin-tries` so it holds
-  across function instances. It is the only door a password opens, so it is
-  the only one worth guessing at; the throttle is what makes a short password
-  defensible rather than a matter of minutes.
+* **Signing in is throttled.** Five wrong passwords and it answers 429: for a
+  minute, then five, then fifteen if it keeps happening. Counted in the store
+  under `admin-tries` so it holds across function instances, and wiped by a
+  correct password. The escalation matters because the person who hits this
+  is almost always the coordinator fumbling her own password, not an
+  attacker, and it costs an attacker the same guesses an hour either way.
+* **The password is trimmed at both ends before comparing.** A value pasted
+  into Netlify with a trailing space or newline looks identical in their UI
+  and would refuse the right password for ever, with nothing at all to see.
+* **A wrong password and no password are different answers**, 401 and 503.
+  If it says "Wrong password." the function *can* read `ADMIN_PASSWORD`, so
+  the value it holds is not the one being typed. Changing an environment
+  variable on Netlify needs a redeploy before the function sees it, and a
+  variable can hold a different value per deploy context.
 * **Every write is guarded by the document's etag** and retried on conflict,
   so two people saving at once do not overwrite each other. Keep that: it is
   why the function reads with strong consistency and writes with
