@@ -41,8 +41,10 @@ off every night with it. "New code" cancels the old one.
 
 ## Setting it up
 
-1. **`rota-config.json`.** Set the club's name, when it meets, and the
-   wording of the training:
+1. **`rota-config.json`.** Set the club's name and the wording of the
+   training. The calendar here is only the starting one: once the coordinator
+   saves the calendar on the roster page it is kept in the store and this file
+   is no longer read for nights or events.
 
        { "club": { "name": "Ballyvaughan Foroige Club" },
          "training": { "label": "Building training", "short": "Building" },
@@ -59,16 +61,31 @@ off every night with it. "New code" cancels the old one.
    running more than a day.
 
    **Club nights come from `dates`, or from `day`, or from both.** `dates` is
-   a list of confirmed dates, which is what to use while BOETC is still
-   setting them: paste them in as they are confirmed and they appear on the
-   rota. `day` is a weekday name instead ("Wednesday"), and fills the next
-   eight weeks by itself. Past dates drop off on their own.
+   a list of confirmed dates. `day` is a weekday name instead ("Wednesday"),
+   and fills the next eight weeks by itself. Past dates drop off on their own.
 
    **Club nights and events are not the same thing here.** Anything in
    `dates` is a club night, in the building, and carries the training
    requirement. Anything in `events` is an event and does not. That is the
    only difference between them, so put a night in the building in `dates`
    even if it is a one-off.
+
+## The calendar, once it is running
+
+The coordinator keeps it on the roster page, under Calendar. Each night has
+a kind (club night or event), a date, a name, somewhere to be, and a line of
+description that shows on the rota under the heading. Events also take a last
+day, for anything running more than one.
+
+The first time the page is opened the calendar is filled in from
+`rota-config.json`, ready to save. Saving takes it over: from then on the
+file is ignored and everything is edited here. Nothing is written until Save
+is pressed, so a half-typed date is never stored.
+
+**Renaming or moving a night keeps everyone already down for it.** Each entry
+carries an id that the ticks hang off, not its date and name, so a club night
+that shifts a week does not quietly lose its leaders. Removing an entry does
+remove its ticks, and the page says so before it does.
 
    More than one club or age group: add more entries to `sections`, each with
    its own `key`. The rota grows a row of chips to switch between them and
@@ -110,7 +127,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 74 offline cases
+    npm run test:function     # 95 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

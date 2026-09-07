@@ -152,6 +152,52 @@ ok("more trained at an event than leaders is refused", [r.status, r.j.error], [4
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 0 } });
 ok("and back to nobody trained at an event", r.j.section.requiredTrainedEvents, 0);
 
+// The calendar the coordinator keeps.
+r = await call("GET", "?sections=club", { token: coord });
+ok("the calendar starts empty, so the pages fall back to the setup file", [r.j.calendar.entries, r.j.calendar.updatedAt], [[], null]);
+r = await call("POST", "?a=calendar", { token: helper, body: { entries: [] } });
+ok("a plain leader cannot change the calendar", r.status, 403);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
+  { kind: "e", date: "2030-05-01", title: "  Day trip  to Galway ", location: "Galway city", details: "Bus leaves at nine.", endDate: "2030-05-02" },
+  { kind: "m", date: "2030-04-03", title: "Club night", details: "Bring runners." },
+  { kind: "m", date: "2030-04-10", title: "Club night" }
+] } });
+ok("the coordinator saves a calendar, sorted by date", [r.status, r.j.calendar.entries.map(e => e.date)], [200, ["2030-04-03", "2030-04-10", "2030-05-01"]]);
+ok("titles are tidied", r.j.calendar.entries[2].title, "Day trip to Galway");
+ok("a description is kept", r.j.calendar.entries[0].details, "Bring runners.");
+ok("an end date after the start is kept", r.j.calendar.entries[2].endDate, "2030-05-02");
+ok("every entry gets an id", r.j.calendar.entries.every(e => /^[a-f0-9]{12}$/.test(e.id)), true);
+const cal = r.j.calendar.entries, night3 = "m:" + cal[0].id, calTrip = "e:" + cal[2].id;
+ok("club nights and events keep their kind", [cal[0].kind, cal[2].kind], ["m", "e"]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night3, add: [coordId] } });
+ok("an entry's id works as a slot id", [r.status, r.j.section.slots[night3].who], [200, [coordId]]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: calTrip, needTrained: 1 } });
+ok("and an event's id does too, with its own trained number", r.j.section.slots[calTrip].needTrained, 1);
+// Renaming and moving a night must not lose the people already down for it.
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
+  { ...cal[0], date: "2030-04-04", title: "Club night, later start" }, cal[1], cal[2]
+] } });
+ok("an entry keeps its id when it is renamed and moved", r.j.calendar.entries.find(e => e.id === cal[0].id).date, "2030-04-04");
+r = await call("GET", "?sections=club", { token: coord });
+ok("so the people already down for it are still on it", r.j.sections.club.slots[night3].who, [coordId]);
+ok("and the calendar comes back on a GET", r.j.calendar.entries.length, 3);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "not a date", title: "X" }] } });
+ok("a bad date is refused", [r.status, /date/.test(r.j.error)], [400, true]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-04-03", title: "   " }] } });
+ok("a nameless night is refused", r.status, 400);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-04-03", title: "X", endDate: "2030-04-01" }] } });
+ok("an end date before the start is dropped, not stored", "endDate" in r.j.calendar.entries[0], false);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-04-03", title: "X", id: cal[0].id }, { kind: "e", date: "2030-04-05", title: "Y", id: cal[0].id }] } });
+ok("the same id twice is refused", r.status, 400);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: Array.from({ length: 201 }, (_, i) => ({ kind: "m", date: "2030-04-03", title: "N" + i })) } });
+ok("more than two hundred nights is refused", r.status, 400);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: "nope" } });
+ok("a calendar that is not a list is refused", r.status, 400);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-04-03", title: "X", details: "d".repeat(400) }] } });
+ok("an over-long description is cut, not refused", r.j.calendar.entries[0].details.length, 300);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: cal } });
+ok("and the calendar can be put back as it was", r.j.calendar.entries.map(e => e.id), cal.map(e => e.id));
+
 // Codes, roles and removal.
 r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); const newCode = r.j.code;
 ok("recode returns a fresh code", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(newCode) && newCode !== helperCode, true);

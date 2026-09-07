@@ -44,13 +44,33 @@ but nobody trained reads as a warning, not as covered.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 74 cases
+    tools/test-foroige.mjs  offline harness, 95 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
-Club nights come from a section's `dates` (a list, for when the dates are
-confirmed one at a time) or its `day` (a weekday, which fills eight weeks) or
-both. Events are the separate `events` array. The split is not cosmetic: it
-is what decides whether the training rule applies.
+## The calendar
+
+The coordinator keeps it on the roster page and it lives in the store under
+`calendar`, as `entries: [{ id, kind, date, endDate?, title, location,
+details }]`. `kind` is `m` for a club night and `e` for an event, and that is
+what decides whether the training rule applies. `details` is the line shown
+on the rota under the heading.
+
+Until anything is saved there, both pages fall back to `rota-config.json`:
+its `dates` (a list) or `day` (a weekday, which fills eight weeks) for club
+nights, and its `events` array. The roster page pre-fills the editor from
+that file so the first save carries it across, and the file is ignored from
+then on.
+
+**Slot ids hang off the entry id, not the date and name.** `m:<entryId>` and
+`e:<entryId>`, so renaming or moving a night keeps everyone already down for
+it. `isSlotId` still accepts the older `m:YYYY-MM-DD` and
+`e:YYYY-MM-DD:Title` forms, which is what a calendar out of the config file
+produces.
+
+The whole calendar is written at once, by `?a=calendar`, rather than an
+action per entry. It is a short list, the page holds it while it is being
+edited, and one write keeps the etag guard meaningful: two coordinators
+editing together conflict and retry rather than interleaving halves.
 
 ## Roles and the store
 
@@ -58,7 +78,7 @@ Everything lives in the private Blobs store `foroige`. Keys: `secret` (the
 HMAC key, generated on first use, never leaves the server), `roster` (people
 with `id`, `name`, `sections`, `trained`, `lead`, `secretary`, `codeHash`),
 `section/<key>` (the three numbers and `slots`, each slot `who` as person
-ids, `off`, and optional `need` and `needTrained`).
+ids, `off`, and optional `need` and `needTrained`), `calendar` (see above).
 
 Roles are flags on a person and the function enforces them, not the pages.
 The field names are `secretary` and `lead`, kept so the two rotas stay
@@ -93,5 +113,14 @@ this up?" with the admin password. The API is documented at the top of
   under the Fetch spec, and every CORS preflight becomes a 502.
 * **This repo is public.** No names, no codes, no passwords, ever. The lists
   go into the store through the roster page, not into Git.
+* **An editor held in the page must track `input`, not `change`.** The
+  calendar rows did `onchange` at first, so the field someone was typing in
+  had not reached the local copy when they clicked Save. Its value was
+  dropped, silently.
+* **`guarded()` on the roster page reloads before it reports.** `load()`
+  clears the error banner on its way in, so showing the message first meant
+  no failure was ever visible. Show it after the reload, not before.
 * **Playwright:** `text=Sign in` matches a heading before a button of the same
-  name. Use `getByRole("button", { name: "Sign in", exact: true })`.
+  name. Use `getByRole("button", { name: "Sign in", exact: true })`. Its
+  `fill()` does not reliably fire `change` on the last field before a click,
+  which is how the bug above stayed hidden.

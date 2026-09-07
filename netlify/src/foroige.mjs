@@ -25,6 +25,11 @@
 // Keys in the store:
 //   secret          HMAC key, generated on first use, never leaves the server
 //   roster          { people: [{ id, name, sections, trained, lead, secretary, codeHash }] }
+//   calendar        { entries: [{ id, kind, date, endDate, title, location, details }] }
+//                   The club's own calendar, kept by the coordinator. kind is
+//                   "m" for a club night and "e" for an event; that is what
+//                   decides whether the training rule applies. While this is
+//                   empty the pages fall back to rota-config.json.
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
 //                     slots: { <slotId>: { who: [personId], off, need, needTrained } } }
 //
@@ -37,7 +42,7 @@
 //
 // API (all JSON; auth by the x-rota-token header):
 //   OPTIONS                                         204
-//   GET    ?sections=a,b                            { me, people, sections }
+//   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
 //   POST   ?a=login                        {code}   { token, me }
 //   POST   ?a=slot     {section,id,add?,remove?,off?,need?,needTrained?}  { section }
@@ -133,6 +138,10 @@ function readToken(sec, token) {
 
 // ---- shapes and validation ----
 const rosterFallback = () => ({ people: [] });
+const calendarFallback = () => ({ entries: [] });
+const MAX_ENTRIES = 200;
+const isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
+const clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 const sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
 // Slot ids say which kind a night is: "m:" a club night in the building,
 // "e:" an event. They carry different training defaults, so every read of the
@@ -143,7 +152,7 @@ const defaultTrained = (d, slotId) => isEventSlot(slotId)
   : (d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
 const pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
 const isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
-const isSlotId = (s) => typeof s === "string" && /^[me]:\d{4}-\d{2}-\d{2}(:.{1,140})?$/.test(s);
+const isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 const cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
 const cleanSections = (a) => Array.isArray(a) ? [...new Set(a.filter(isKey))] : [];
 const num = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? n : NaN; };
@@ -209,7 +218,8 @@ export function createHandler(storeFactory) {
         // who share a club with them, which is all coverage needs.
         const mine = new Set(me.sections || []);
         const visible = (me.lead || canManage) ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
-        return json(200, { me: pub(me), people: visible.map(pub), sections });
+        const cal = await readDoc(store, "calendar", calendarFallback);
+        return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -271,6 +281,33 @@ export function createHandler(storeFactory) {
         return json(200, { section: doc });
       }
       if (!canManage) return fail(403, "Only the club coordinator can change the roster.");
+
+      // The whole calendar is written at once. It is a short list, the page
+      // holds it while it is being edited, and one write keeps the etag guard
+      // meaningful: two coordinators editing at the same moment conflict and
+      // retry rather than interleaving half of each other's changes.
+      if (a === "calendar") {
+        const rows = Array.isArray(b.entries) ? b.entries : null;
+        if (!rows) return fail(400, "No calendar given.");
+        if (rows.length > MAX_ENTRIES) return fail(400, `That is more than ${MAX_ENTRIES} nights.`);
+        const entries = [];
+        for (const row of rows) {
+          if (!row || typeof row !== "object") return fail(400, "Every night needs a date and a name.");
+          const kind = row.kind === "e" ? "e" : "m";
+          if (!isDate(row.date)) return fail(400, "Every night needs a date, as 2026-10-09.");
+          const title = clip(row.title, 80);
+          if (!title) return fail(400, "Every night needs a name.");
+          const endDate = isDate(row.endDate) && row.endDate > row.date ? row.endDate : null;
+          const entry = { id: /^[a-f0-9]{8,32}$/.test(row.id || "") ? row.id : randomBytes(6).toString("hex"),
+            kind, date: row.date, title, location: clip(row.location, 80), details: clip(row.details, 300) };
+          if (endDate) entry.endDate = endDate;
+          entries.push(entry);
+        }
+        if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");
+        entries.sort((x, y) => x.date.localeCompare(y.date) || x.title.localeCompare(y.title));
+        const doc = await update(store, "calendar", calendarFallback, (d) => { d.entries = entries; return d; });
+        return json(200, { calendar: { entries: doc.entries, updatedAt: doc.updatedAt } });
+      }
 
       if (a === "person") {
         const name = cleanName(b.name); if (!name) return fail(400, "A name is needed.");

@@ -60,6 +60,18 @@
       </div>
     </div>
 
+    <div class="card" id="calCard" hidden>
+      <h2>Calendar</h2>
+      <p class="small muted" id="calNote"></p>
+      <div id="calList"></div>
+      <div class="row" style="margin-top:.8rem">
+        <button class="btn" onclick="addEntry('m')">Add a club night</button>
+        <button class="btn" onclick="addEntry('e')">Add an event</button>
+        <span style="margin-left:auto"><button class="btn primary" id="calSave" onclick="saveCal()">Save the calendar</button></span>
+      </div>
+      <p class="msg" id="calMsg"></p>
+    </div>
+
     <details class="card" id="bulkCard" hidden>
       <summary>Add a list of names at once</summary>
       <p class="small muted" style="margin-top:.6rem">One name per line. Put a <b>*</b> at the end of a line for anyone who holds <span data-training-label>the training</span>. Names already on the roster are left alone. Every new person gets a code, all shown together below, once.</p>
@@ -76,6 +88,9 @@
 <script src="rota-lib.js"></script>
 <script>
 let C = null, D = null;
+// The calendar is held here while it is being edited and written in one go, so
+// a half-typed date is never saved and a reload cannot wipe unsaved changes.
+let CAL = null, calDirty = false;
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
 function sectionName(k){ return (C.settings.sections.find(x => x.key === k) || {}).name || k; }
 const personById = id => (D.people || []).find(p => p.id === id);
@@ -94,6 +109,8 @@ function render(){
     : "Only the club coordinator can change the roster. This is the list as it stands.";
   $("addForm").hidden = !manage;
   $("bulkCard").hidden = !manage;
+  $("calCard").hidden = !manage;
+  if (manage) renderCal();
   $("newSecs").hidden = !many();
   const people = (D.people || []).slice().sort(byName);
   const trained = people.filter(p => p.trained).length;
@@ -104,8 +121,61 @@ function render(){
   ).join("") : `<div class="empty">Nobody yet.</div>`;
   if (manage && many()) $("newSecs").innerHTML = chips([], null);
 }
-async function load(){ showErr(""); D = await api("GET", "?sections="); $("gate").hidden = true; $("app").hidden = false; render(); }
-async function guarded(fn){ try { await fn(); } catch (e) { showErr(e.message); await load().catch(() => {}); } }
+// Entries the coordinator has not taken over yet still live in rota-config.json.
+// Showing them here, ready to save, is how the club nights already set up get
+// carried across without anyone retyping them.
+function fromConfig(){
+  const out = [];
+  (C.settings.sections || []).forEach(sec => (sec.dates || []).forEach(date =>
+    out.push({ kind: "m", date, title: sec.name || "Club night", location: "", details: "" })));
+  (C.events || []).forEach(e => out.push({ kind: "e", date: e.date, endDate: e.endDate || "", title: e.title || "Event", location: e.location || "", details: e.details || "" }));
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "" }));
+async function load(){
+  showErr(""); D = await api("GET", "?sections=");
+  if (!calDirty) CAL = calFromServer().length || (D.calendar && D.calendar.updatedAt) ? calFromServer() : fromConfig();
+  $("gate").hidden = true; $("app").hidden = false; render();
+}
+const iso = (d) => d.toISOString().slice(0, 10);
+function addEntry(kind){
+  const d = new Date(); d.setDate(d.getDate() + 7);
+  CAL.push({ kind, date: iso(d), endDate: "", title: kind === "m" ? "Club night" : "", location: "", details: "" });
+  calDirty = true; renderCal(); 
+  const last = $("calList").lastElementChild; if (last) last.querySelector("input[type=text]").focus();
+}
+function setEntry(i, field, v){ CAL[i][field] = v; calDirty = true; $("calSave").textContent = "Save the calendar"; $("calMsg").textContent = ""; }
+function removeEntry(i){ if (!confirm("Take " + (CAL[i].title || "this night") + " off the calendar? Anyone already down for it loses their place on it.")) return; CAL.splice(i, 1); calDirty = true; renderCal(); }
+function renderCal(){
+  const taken = !!(D.calendar && D.calendar.updatedAt);
+  $("calNote").textContent = taken
+    ? "The club nights and events on the rota. Changing a date or a name keeps everyone already down for that night."
+    : "These are coming from the site's setup file. Save the calendar to take it over, and it can be edited here from then on.";
+  $("calSave").textContent = calDirty || !taken ? "Save the calendar" : "Saved";
+  $("calList").innerHTML = CAL.map((e, i) => `<div class="entry">
+    <div class="entry-row">
+      <select oninput="setEntry(${i},'kind',this.value)"><option value="m" ${e.kind === "m" ? "selected" : ""}>Club night</option><option value="e" ${e.kind === "e" ? "selected" : ""}>Event</option></select>
+      <input type="date" value="${esc(e.date)}" oninput="setEntry(${i},'date',this.value)" aria-label="Date">
+      <input type="text" value="${esc(e.title)}" placeholder="What it is" oninput="setEntry(${i},'title',this.value)" aria-label="Name">
+      <button class="btn quiet" title="Remove" onclick="removeEntry(${i})">&#x2715;</button>
+    </div>
+    <div class="entry-row">
+      <input type="text" value="${esc(e.location || "")}" placeholder="${e.kind === "e" ? "Where" : "Where, if not the usual"}" oninput="setEntry(${i},'location',this.value)" aria-label="Place">
+      ${e.kind === "e" ? `<label class="pick"><span>to</span><input type="date" value="${esc(e.endDate || "")}" oninput="setEntry(${i},'endDate',this.value)" aria-label="Last day"></label>` : ""}
+    </div>
+    <input type="text" value="${esc(e.details || "")}" placeholder="A line about it, shown on the rota" oninput="setEntry(${i},'details',this.value)" aria-label="Description">
+  </div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
+}
+const saveCal = () => guarded(async () => {
+  $("calMsg").textContent = ""; $("calMsg").className = "msg";
+  const r = await api("POST", "?a=calendar", { entries: CAL });
+  calDirty = false; D.calendar = r.calendar; CAL = calFromServer();
+  $("calMsg").textContent = r.calendar.entries.length + " on the calendar, saved.";
+  renderCal();
+});
+// Reload first, then say what went wrong: load() clears the banner on its way
+// in, so showing the message before it meant the message never survived.
+async function guarded(fn){ try { await fn(); } catch (e) { const m = e.message; await load().catch(() => {}); showErr(m); } }
 const pickedSections = () => many() ? [...$("newSecs").querySelectorAll("input:checked")].map(i => i.dataset.key) : defaultSections();
 const addPerson = () => guarded(async () => {
   const name = $("newName").value.trim(); if (!name) return;

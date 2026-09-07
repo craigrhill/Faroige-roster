@@ -891,12 +891,16 @@ function readToken(sec, token) {
   }
 }
 var rosterFallback = () => ({ people: [] });
+var calendarFallback = () => ({ entries: [] });
+var MAX_ENTRIES = 200;
+var isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
+var clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 var sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
 var isEventSlot = (id) => String(id).startsWith("e:");
 var defaultTrained = (d, slotId) => isEventSlot(slotId) ? d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS : d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED;
 var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
 var isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
-var isSlotId = (s) => typeof s === "string" && /^[me]:\d{4}-\d{2}-\d{2}(:.{1,140})?$/.test(s);
+var isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 var cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
 var cleanSections = (a) => Array.isArray(a) ? [...new Set(a.filter(isKey))] : [];
 var num = (v) => {
@@ -988,7 +992,8 @@ function createHandler(storeFactory) {
         }
         const mine = new Set(me.sections || []);
         const visible = me.lead || canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
-        return json(200, { me: pub(me), people: visible.map(pub), sections });
+        const cal = await readDoc(store, "calendar", calendarFallback);
+        return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -1055,6 +1060,37 @@ function createHandler(storeFactory) {
         return json(200, { section: doc });
       }
       if (!canManage) return fail(403, "Only the club coordinator can change the roster.");
+      if (a === "calendar") {
+        const rows = Array.isArray(b.entries) ? b.entries : null;
+        if (!rows) return fail(400, "No calendar given.");
+        if (rows.length > MAX_ENTRIES) return fail(400, `That is more than ${MAX_ENTRIES} nights.`);
+        const entries = [];
+        for (const row of rows) {
+          if (!row || typeof row !== "object") return fail(400, "Every night needs a date and a name.");
+          const kind = row.kind === "e" ? "e" : "m";
+          if (!isDate(row.date)) return fail(400, "Every night needs a date, as 2026-10-09.");
+          const title = clip(row.title, 80);
+          if (!title) return fail(400, "Every night needs a name.");
+          const endDate = isDate(row.endDate) && row.endDate > row.date ? row.endDate : null;
+          const entry = {
+            id: /^[a-f0-9]{8,32}$/.test(row.id || "") ? row.id : randomBytes(6).toString("hex"),
+            kind,
+            date: row.date,
+            title,
+            location: clip(row.location, 80),
+            details: clip(row.details, 300)
+          };
+          if (endDate) entry.endDate = endDate;
+          entries.push(entry);
+        }
+        if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");
+        entries.sort((x, y) => x.date.localeCompare(y.date) || x.title.localeCompare(y.title));
+        const doc = await update(store, "calendar", calendarFallback, (d) => {
+          d.entries = entries;
+          return d;
+        });
+        return json(200, { calendar: { entries: doc.entries, updatedAt: doc.updatedAt } });
+      }
       if (a === "person") {
         const name = cleanName(b.name);
         if (!name) return fail(400, "A name is needed.");

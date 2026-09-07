@@ -67,20 +67,33 @@ function keys(){ return C.settings.sections.map(x => x.key); }
 function sec(){ let k = null; try { k = localStorage.getItem(SK); } catch {} return keys().includes(k) ? k : keys()[0]; }
 function sectionName(k){ return (C.settings.sections.find(x => x.key === k) || {}).name || k; }
 function iso(d){ return d.toISOString().slice(0, 10); }
+// The calendar the coordinator keeps, if there is one. Until they have saved
+// anything it falls back to rota-config.json, which is how the club nights got
+// here in the first place.
 function upcoming(k){
   const section = C.settings.sections.find(x => x.key === k) || {};
   const today = new Date(); today.setHours(12, 0, 0, 0);
+  const t = iso(today);
   const out = [], wd = DAYS[(section.day || "").toLowerCase()];
-  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: [section.time, section.venue].filter(Boolean).join(", "), kind: "meeting" });
-  // A club night comes either from a weekday, which fills the next eight
-  // weeks, or from a list of confirmed dates, or from both.
+  const nightSub = (place) => [section.time, place || section.venue].filter(Boolean).join(", ");
+  const entries = (D.calendar && D.calendar.entries) || [];
+  if (entries.length) {
+    entries.filter(e => (e.endDate || e.date) >= t).forEach(e => out.push({
+      id: e.kind + ":" + e.id, date: e.date, title: e.title, details: e.details || "",
+      sub: e.kind === "e" ? [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ") : nightSub(e.location),
+      kind: e.kind === "e" ? "event" : "meeting" }));
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: nightSub(), details: "", kind: "meeting" });
+  // From the setup file: a weekday, which fills the next eight weeks, or a
+  // list of confirmed dates, or both.
   if (wd !== undefined) {
     const d = new Date(today); while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
     for (let i = 0; i < 8; i++) { out.push(night(iso(d))); d.setDate(d.getDate() + 7); }
   }
-  (section.dates || []).filter(date => date >= iso(today) && !out.some(x => x.id === "m:" + date)).forEach(date => out.push(night(date)));
-  (C.events || []).filter(e => e.date >= iso(today) && (e.section === k || !e.section || e.section === "all"))
-    .forEach(e => out.push({ id: "e:" + e.date + ":" + e.title, date: e.date, title: e.title, sub: [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", "), kind: "event" }));
+  (section.dates || []).filter(date => date >= t && !out.some(x => x.id === "m:" + date)).forEach(date => out.push(night(date)));
+  (C.events || []).filter(e => (e.endDate || e.date) >= t && (e.section === k || !e.section || e.section === "all"))
+    .forEach(e => out.push({ id: "e:" + e.date + ":" + e.title, date: e.date, title: e.title, details: e.details || "", sub: [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", "), kind: "event" }));
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 const personById = id => (D.people || []).find(p => p.id === id);
@@ -152,6 +165,7 @@ function render(){
       : `<div class="picks"><button class="btn ${meOn ? "off" : "primary"}" onclick="tick('${esc(k)}','${esc(x.id)}','${esc(me.id)}',${!meOn})">${meOn ? "Take me off this night" : "I can do this night"}</button></div>`;
     return `<div class="slot">
       <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
+      ${x.details ? `<p class="detail">${esc(x.details)}</p>` : ""}
       ${s.off ? "" : `<div class="who">
         <div class="onit">${chips || `<span class="empty">${listed.length ? "Nobody on it yet." : "Nobody on the roster for " + esc(sectionName(k)) + " yet."}</span>`}</div>
         ${listed.length ? controls : ""}
