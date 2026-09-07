@@ -94,7 +94,10 @@ editing together conflict and retry rather than interleaving halves.
 ## The public page
 
 `events.html` is open to anyone with the address and reads
-`GET ?a=public&section=<key>`, which takes no token. That endpoint returns
+`GET ?a=public&section=<key>`, which takes no token. When the store holds no
+calendar yet the page falls back to `rota-config.json`, the same as the rota
+does, so the two never disagree about what the term is: without that, the
+link handed to parents sat empty while the rota showed fourteen nights. That endpoint returns
 dates and **counts**: how many are on a night and how many of those are
 trained. No names, no ids, no roster, no slots. That is the whole reason it
 can be public, so keep anything personal out of it.

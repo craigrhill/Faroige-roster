@@ -145,7 +145,8 @@ dates and counts, nothing about who. There are two links to it, both on the
 rota page under Links to share:
 
 * `/events` is the calendar for parents. What is on, where, and a line about
-  it. It says nothing about coverage.
+  it. It says nothing about coverage. It works from the moment the site is
+  up: until a calendar is saved it shows the one in `rota-config.json`.
 * `/events?gaps` marks each night "Needs 2 more" and totals them up. That is
   the one to send when chasing leaders.
 

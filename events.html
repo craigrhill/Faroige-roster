@@ -34,6 +34,22 @@ const GAPS = new URLSearchParams(location.search).has("gaps");
 let C = null, D = null, KEY = null;
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
 const iso = d => d.toISOString().slice(0, 10);
+const DAYS = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+// Until the coordinator has saved a calendar there is nothing in the store,
+// and this page would sit empty while the rota was showing the term from
+// rota-config.json. Same fallback, so the two never disagree.
+function fromConfig(){
+  const out = [], today = new Date(); today.setHours(12, 0, 0, 0);
+  const blank = { on: 0, trained: 0, need: null, needTrained: null, off: false, location: "", details: "" };
+  (C.settings.sections || []).forEach(sec => {
+    const night = date => out.push({ ...blank, kind: "m", date, endDate: null, title: sec.name || "Club night" });
+    const wd = DAYS[(sec.day || "").toLowerCase()];
+    if (wd !== undefined) { const d = new Date(today); while (d.getDay() !== wd) d.setDate(d.getDate() + 1); for (let i = 0; i < 8; i++) { night(iso(d)); d.setDate(d.getDate() + 7); } }
+    (sec.dates || []).forEach(date => { if (!out.some(x => x.date === date && x.kind === "m")) night(date); });
+  });
+  (C.events || []).forEach(e => out.push({ ...blank, kind: "e", date: e.date, endDate: e.endDate || null, title: e.title || "Event", location: e.location || "", details: e.details || "" }));
+  return out;
+}
 const MONTH = s => new Date(s + "T12:00:00").toLocaleDateString("en-IE", { month: "long", year: "numeric" });
 
 function needOf(e){ return e.need > 0 ? e.need : D.required; }
@@ -98,6 +114,7 @@ async function boot(){
     const r = await fetch(API + "?a=public&section=" + encodeURIComponent(KEY), { cache: "no-store" });
     D = await r.json();
     if (!r.ok) throw new Error(D.error || "Error " + r.status);
+    if (!(D.entries || []).length) D.entries = fromConfig();
     render();
   } catch (e) { showErr("The calendar could not be loaded. " + e.message); }
 }
