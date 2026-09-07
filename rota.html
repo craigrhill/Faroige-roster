@@ -34,7 +34,7 @@
     </div>
 
     <h1>Who is covering what</h1>
-    <p class="muted">The club nights and events coming up. Tick yourself in for the ones you can do. A club night is only covered when it has enough leaders <em>and</em> one of them holds <span data-training-label>the training</span>. Events are away from the building, so they just need the leaders.</p>
+    <p class="muted">The club nights and events coming up. Put yourself down for the ones you can do. A club night is only covered when it has enough leaders <em>and</em> one of them holds <span data-training-label>the training</span>. Events are away from the building, so they just need the leaders.</p>
     <div class="chips" id="chips" hidden></div>
 
     <div class="card">
@@ -138,11 +138,24 @@ function render(){
       : `<span class="status warn">No ${esc(TRAIN.short)}</span>`;
     const listed = [...names]; s.who.forEach(id => { if (!listed.some(p => p.id === id)) { const p = personById(id); if (p) listed.push(p); } });
     listed.sort(byTrainedThenName);
-    const boxes = listed.map(p => { const on = s.who.includes(p.id), can = lead || p.id === me.id;
-      return `<label class="${p.id === me.id ? "me" : ""} ${can ? "" : "locked"}"><input type="checkbox" ${on ? "checked" : ""} ${can ? "" : "disabled"} onchange="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',this.checked)">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}</label>`; }).join("");
+    // Who is on the night, as chips you can take off, and how to add someone.
+    // A club leader gets two pull-downs, the approved people kept separate
+    // because that is the one a night cannot go ahead without. Everyone else
+    // can only put themselves on, so they get a button instead of a list.
+    const onIt = listed.filter(p => s.who.includes(p.id)), free = listed.filter(p => !s.who.includes(p.id));
+    const chips = onIt.map(p => { const can = lead || p.id === me.id;
+      return `<span class="who-chip${p.id === me.id ? " me" : ""}">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}${can ? `<button class="x" title="Take ${esc(p.name)} off this night" onclick="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',false)">&#x2715;</button>` : ""}</span>`; }).join("");
+    const picker = (label, arr) => `<label class="pick"><span>${esc(label)}</span><select ${arr.length ? "" : "disabled"} onchange="if(this.value)tick('${esc(k)}','${esc(x.id)}',this.value,true);this.selectedIndex=0"><option value="">${arr.length ? "add one" : "all on already"}</option>${arr.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`;
+    const meOn = s.who.includes(me.id);
+    const controls = lead
+      ? `<div class="picks">${picker(TRAIN.label, free.filter(p => p.trained))}${picker("Other leaders", free.filter(p => !p.trained))}</div>`
+      : `<div class="picks"><button class="btn ${meOn ? "off" : "primary"}" onclick="tick('${esc(k)}','${esc(x.id)}','${esc(me.id)}',${!meOn})">${meOn ? "Take me off this night" : "I can do this night"}</button></div>`;
     return `<div class="slot">
       <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
-      ${s.off ? "" : `<div class="who">${boxes || `<span class="empty">Nobody on the roster for ${esc(sectionName(k))} yet.</span>`}</div>`}
+      ${s.off ? "" : `<div class="who">
+        <div class="onit">${chips || `<span class="empty">${listed.length ? "Nobody on it yet." : "Nobody on the roster for " + esc(sectionName(k)) + " yet."}</span>`}</div>
+        ${listed.length ? controls : ""}
+      </div>`}
       <div class="slot-foot">
         ${s.off ? "" : lead
           ? `<label class="need">Leaders <input type="number" min="1" max="9" value="${st.need}" onchange="setNeed('${esc(k)}','${esc(x.id)}',this.value)"></label>
@@ -157,10 +170,9 @@ function render(){
 
   // The roster is the coordinator's. Here it is read-only: who can cover this club.
   $("peopleTitle").textContent = many ? "Leaders for " + sectionName(k) : "Leaders";
-  $("peopleNote").textContent = lead
-    ? `From the roster the coordinator keeps. ${names.filter(p => p.trained).length} of ${names.length} hold ${TRAIN.label.toLowerCase()}. To add someone or change their training, ask the coordinator.`
-    : "To change your details, ask the club coordinator.";
-  $("people").innerHTML = lead ? (names.map(p => `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.lead ? "<small>club leader</small>" : ""}</span></div>`).join("") || `<div class="empty">Nobody on the roster yet.</div>`) : "";
+  $("peopleNote").textContent = `${names.filter(p => p.trained).length} of ${names.length} hold ${TRAIN.label.toLowerCase()}. `
+    + (lead ? "To add someone or change their training, ask the coordinator." : "Only a club leader can put someone else on a night.");
+  $("people").innerHTML = names.map(p => `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.lead ? "<small>club leader</small>" : ""}</span></div>`).join("") || `<div class="empty">Nobody on the roster yet.</div>`;
 }
 async function load(){ showErr(""); D = await api("GET", "?sections=" + keys().join(",")); $("gate").hidden = true; $("app").hidden = false; render(); }
 // On a rejected change, put the inputs back to what the server actually holds.

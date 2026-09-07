@@ -34,6 +34,8 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .btn{font:inherit;font-weight:600;border:0;border-radius:999px;padding:.55em 1.1em;background:var(--green-100);color:var(--green-700);cursor:pointer}
 .btn.primary{background:var(--green-700);color:#fff}
 .btn.quiet{background:none;color:var(--stone-600);padding:.4em .6em}
+/* Taking yourself off is a step back, not a dead end: quiet, but still a button. */
+.btn.off{background:#fff;border:1px solid var(--stone-200);color:var(--stone-600)}
 .needs{display:flex;gap:.6rem 1.4rem;flex-wrap:wrap;align-items:center}
 .gaps{display:grid;gap:.4rem}
 .gap{display:flex;justify-content:space-between;gap:.6rem;padding:.5rem .7rem;border-radius:10px;background:#FBE9EC;color:#7A1F2E;font-weight:500}
@@ -50,11 +52,16 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .status.ok{background:var(--green-100);color:#1B5E45}
 .status.warn{background:var(--amber-soft);color:#7A4A00}
 .status.off{background:var(--stone-100);color:var(--stone-600)}
-.who{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin-top:.5rem}
-.who label{display:inline-flex;align-items:center;gap:.35rem;font-size:.95rem}
-.who label.me{font-weight:600}
-.who label.locked{color:var(--stone-600)}
-.who input{width:18px;height:18px;accent-color:var(--green-700)}
+.who{margin-top:.5rem;display:grid;gap:.55rem;justify-items:start}
+.onit{display:flex;flex-wrap:wrap;gap:.4rem}
+.who-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.92rem;background:var(--stone-100);border-radius:999px;padding:.25em .35em .25em .8em}
+.who-chip.me{font-weight:600}
+.who-chip .x{border:0;background:none;font:inherit;line-height:1;cursor:pointer;color:var(--stone-600);padding:.15em .4em;border-radius:999px}
+.who-chip .x:hover{background:rgba(0,0,0,.09);color:var(--ink)}
+.picks{display:flex;flex-wrap:wrap;gap:.5rem .9rem;align-items:center}
+.pick{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--stone-600)}
+select{font:inherit;font-size:.92rem;padding:.4em .5em;border:1px solid var(--stone-200);border-radius:10px;background:#fff;color:var(--ink);max-width:11rem}
+select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .tag{font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--blue-100);color:var(--blue-700);padding:.15em .5em;border-radius:999px;white-space:nowrap}
 .slot-foot{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem 1rem;margin-top:.45rem;font-size:.85rem;color:var(--stone-600)}
 .need{display:inline-flex;align-items:center;gap:.45rem}
