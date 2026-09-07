@@ -40,8 +40,9 @@ the pages:
   place, and takes themselves off. There is no third role: a club leader one
   existed and was taken out.
 
-**Nobody has to type anything.** Each person gets their own link, shown once
-on the roster page and sent to them however suits. Opening it signs that
+**The coordinator needs only her name and the password.** No code, no link.
+Everybody else gets their own link, shown once on the roster page and sent to
+them however suits, and types nothing at all. Opening it signs that
 phone in for 365 days and the code is taken straight back out of the address
 bar. Taking someone off the roster revokes their sign-in at once, and takes
 them off every night with it. "New link" cancels the old one.
@@ -123,9 +124,11 @@ remove its ticks, and the page says so before it does.
    commonest way to lose an afternoon here. Without it, first-time setup
    answers 503 and says so.
 
-3. **First run.** Open `roster.html`, expand "First time setting this up?",
-   enter the coordinator's name and that password. Five wrong tries shuts
-   setup for fifteen minutes, so a guessed password is not a quick way in. That creates the coordinator and shows
+3. **First run.** Open `roster.html` and sign in with the coordinator's name
+   and that password. The first name entered becomes the coordinator; from
+   then on those same two things get her in on any phone, with no code or
+   link to keep. Five wrong tries shuts it for fifteen minutes, so a guessed
+   password is not a quick way in. That creates the coordinator and shows
    their code. Everything after that happens on the roster page and the
    password is not needed again.
 
@@ -166,7 +169,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 129 offline cases
+    npm run test:function     # 132 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

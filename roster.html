@@ -20,21 +20,18 @@
 
   <section id="gate" hidden>
     <h1>Sign in</h1>
-    <p class="muted">The roster is kept by the coordinator. Open your link, or enter the code from it.</p>
+    <p class="muted">The roster is kept by the coordinator. Your name and the password, nothing to remember beyond that.</p>
     <div class="card">
-      <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
+      <form class="add" id="adminForm" autocomplete="on">
+        <label class="small" for="adminName">Your name</label>
+        <input type="text" id="adminName" name="username" autocomplete="username" autocapitalize="words" spellcheck="false">
+        <label class="small" for="adminPw">Password</label>
+        <input type="password" id="adminPw" name="password" autocomplete="current-password" inputmode="numeric">
+        <div><button class="btn primary" type="submit">Sign in</button></div>
+      </form>
       <p class="msg" id="gateMsg"></p>
     </div>
-    <details class="card">
-      <summary>First time setting this up?</summary>
-      <p class="small muted" style="margin-top:.6rem">The site's admin password creates the coordinator and gives you a code. Do this once. If the only coordinator's link is ever lost, doing it again with the same name issues a new one.</p>
-      <div class="add">
-        <input type="text" id="bootName" placeholder="Your name">
-        <input type="password" id="bootPw" placeholder="Admin password" autocomplete="current-password">
-        <div><button class="btn" onclick="bootstrap()">Create the coordinator</button></div>
-      </div>
-      <p class="msg" id="bootMsg"></p>
-    </details>
+    <p class="small muted">The first name entered here becomes the coordinator. After that it is hers, and the same two things get her back in on any phone.</p>
   </section>
 
   <section id="app" hidden>
@@ -276,12 +273,20 @@ const setSections = (id, key, on) => guarded(async () => { const p = personById(
 const setFlag = (id, flag, on) => guarded(async () => { await api("POST", "?a=person-update", { id, [flag]: on }); await load(); });
 const recode = (id) => guarded(async () => { const p = personById(id); if (!confirm("Give " + p.name + " a new link? Their old one will stop working and they will be signed out.")) return; const r = await api("POST", "?a=recode", { id }); showCode(p.name, r.code); });
 const removePerson = (id) => guarded(async () => { const p = personById(id); if (!confirm("Remove " + p.name + " from the roster? Their ticks on every rota are removed too.")) return; await api("POST", "?a=person-remove", { id, sections: C.settings.sections.map(x => x.key) }); await load(); });
-async function bootstrap(){
-  $("bootMsg").textContent = ""; $("bootMsg").className = "msg";
-  try { const r = await api("POST", "?a=bootstrap", { name: $("bootName").value, sections: defaultSections() }, { "x-admin-password": $("bootPw").value }); $("bootPw").value = ""; await signIn(r.code, "bootMsg", load); showCode(r.person.name, r.code); }
-  catch (e) { $("bootMsg").textContent = e.message; $("bootMsg").className = "msg err"; }
+// Her name and the password. No code, no link, and nothing is emailed: the
+// name says who she is and the password says she is allowed.
+async function adminSignIn(ev){
+  if (ev) ev.preventDefault();
+  $("gateMsg").textContent = "Signing in..."; $("gateMsg").className = "msg";
+  try {
+    const r = await api("POST", "?a=admin-login", { name: $("adminName").value, sections: defaultSections() }, { "x-admin-password": $("adminPw").value });
+    $("adminPw").value = "";
+    setToken(r.token);
+    await load();
+  } catch (e) { $("gateMsg").textContent = e.message; $("gateMsg").className = "msg err"; }
 }
-function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
+$("adminForm").addEventListener("submit", adminSignIn);
+function signOut(msg){ setToken(null); D = null; CAL = null; calDirty = false; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){
   C = await loadContent();

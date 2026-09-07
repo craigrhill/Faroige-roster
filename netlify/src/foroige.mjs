@@ -49,8 +49,12 @@
 //   OPTIONS                                         204
 //   GET    ?a=public&section=k   (no token)         { required, ..., entries }
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
-//   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
-//                        five wrong tries shuts it for fifteen minutes
+//   POST   ?a=admin-login x-admin-password {name,sections} { token, me, created }
+//                        The coordinator's way in: her name and the password,
+//                        no code and no link. It makes her the coordinator if
+//                        she is not one already, which is also how the first
+//                        one is made and how a lost one is recovered.
+//                        Five wrong tries shuts it for fifteen minutes.
 //   POST   ?a=login                        {code}   { token, me }
 //   POST   ?a=slot     {section,id,add?,remove?}                 { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
@@ -205,11 +209,11 @@ export function createHandler(storeFactory) {
       }
 
       // Unauthenticated entry points.
-      if (req.method === "POST" && a === "bootstrap") {
+      if (req.method === "POST" && a === "admin-login") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
         const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0 }));
         const waitMs = (guard.doc.until || 0) - Date.now();
-        if (waitMs > 0) return fail(429, `Too many wrong tries. Setup is shut for another ${Math.ceil(waitMs / 60000)} minute${Math.ceil(waitMs / 60000) === 1 ? "" : "s"}.`);
+        if (waitMs > 0) return fail(429, `Too many wrong tries. Signing in is shut for another ${Math.ceil(waitMs / 60000)} minute${Math.ceil(waitMs / 60000) === 1 ? "" : "s"}.`);
         if (!adminOk(req)) {
           await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => {
             d.fails = (d.fails || 0) + 1;
@@ -222,15 +226,25 @@ export function createHandler(storeFactory) {
         await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => (d.fails || d.until ? { fails: 0, until: 0 } : false));
         const b = await body(req); const name = cleanName(b && b.name);
         if (!name) return fail(400, "A name is needed.");
-        const code = newCode(); let person;
+        let person, created = false;
         await update(store, "roster", rosterFallback, (doc) => {
           person = doc.people.find((p) => p.name.toLowerCase() === name.toLowerCase());
           const sections = cleanSections(b && b.sections);
-          if (person) { person.secretary = true; person.codeHash = codeHash(sec, code); if (sections.length) person.sections = [...new Set([...(person.sections || []), ...sections])]; }
-          else { person = makePerson({ name, sections, secretary: true }, sec, code); doc.people.push(person); }
+          if (person) {
+            // Signing in, not starting over: her code is left alone. Rotating
+            // it on every sign-in would break a link she had been given.
+            const already = person.secretary && !sections.some((k) => !(person.sections || []).includes(k));
+            person.secretary = true;
+            if (sections.length) person.sections = [...new Set([...(person.sections || []), ...sections])];
+            if (already) return false;
+          } else {
+            created = true;
+            person = makePerson({ name, sections, secretary: true }, sec, newCode());
+            doc.people.push(person);
+          }
           return doc;
         });
-        return json(200, { person: pub(person), code });
+        return json(200, { token: issueToken(sec, person.id), me: pub(person), created });
       }
       if (req.method === "POST" && a === "login") {
         const b = await body(req); const h = codeHash(sec, b && b.code);

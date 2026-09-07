@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Local preview. Serves the repo and runs the real rota function from its
 // source against an in-memory store that lasts for the life of the process,
-// so the pages can be exercised end to end without Netlify. The admin
-// password for first-time setup is "local" unless ADMIN_PASSWORD is set.
+// so the pages can be exercised end to end without Netlify. The coordinator
+// signs in on the roster page with any name and the password "local", unless
+// ADMIN_PASSWORD is set.
 //
 //   node tools/serve.mjs [port]
 import { createServer } from "node:http";

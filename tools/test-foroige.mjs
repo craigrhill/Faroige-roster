@@ -19,34 +19,40 @@ async function call(method, q, { token, admin, body: b } = {}) {
 
 // No admin password set at all: bootstrap is refused, and says why.
 delete process.env.ADMIN_PASSWORD;
-let r = await call("POST", "?a=bootstrap", { admin: "anything", body: { name: "Coord" } });
-ok("bootstrap with no ADMIN_PASSWORD set is 503", [r.status, /ADMIN_PASSWORD/.test(r.j.error)], [503, true]);
+let r = await call("POST", "?a=admin-login", { admin: "anything", body: { name: "Coord" } });
+ok("signing in with no ADMIN_PASSWORD set is 503", [r.status, /ADMIN_PASSWORD/.test(r.j.error)], [503, true]);
 process.env.ADMIN_PASSWORD = "admin-for-test";
 
 r = await call("OPTIONS", "");                              ok("OPTIONS is 204", r.status, 204);
 r = await call("GET", "?sections=club");                    ok("GET without token is 401", r.status, 401);
-r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } }); ok("bootstrap with wrong password is 401", r.status, 401);
-// Five wrong tries and setup shuts, so a short password is not worth guessing.
-for (let i = 0; i < 3; i++) await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
-r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } }); ok("the wrong password is 401", r.status, 401);
+// Five wrong tries and it shuts, so a short password is not worth guessing.
+for (let i = 0; i < 3; i++) await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
 ok("the fifth wrong try is the last one allowed", r.status, 401);
-r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
-ok("after that setup is shut, and says for how long", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
-r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord" } });
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
+ok("after that it is shut, and says for how long", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord" } });
 ok("and the right password is turned away too while it is shut", r.status, 429);
 { const g = JSON.parse(store._map.get("admin-tries").value); g.until = Date.now() - 1; store._map.set("admin-tries", { value: JSON.stringify(g), etag: "expired" }); }
-r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
 ok("once the wait is over it opens again", r.status, 401);
-r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
-ok("bootstrap creates the coordinator, in the club", [r.status, r.j.person.secretary, r.j.person.sections], [200, true, ["club"]]);
-ok("and a good password wipes the count of wrong ones", JSON.parse(store._map.get("admin-tries").value).fails, 0);
-ok("and there is no club leader flag on anyone any more", "lead" in r.j.person, false);
-ok("the first coordinator is not assumed to be trained", r.j.person.trained, false);
-const coordCode = r.j.code; ok("code has the expected shape", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(coordCode), true);
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
+ok("her name and the password make the coordinator, in the club", [r.status, r.j.me.secretary, r.j.me.sections, r.j.created], [200, true, ["club"], true]);
+ok("and sign her straight in, with no code to copy out", [typeof r.j.token, "code" in r.j], ["string", false]);
+ok("a good password wipes the count of wrong ones", JSON.parse(store._map.get("admin-tries").value).fails, 0);
+ok("and there is no club leader flag on anyone any more", "lead" in r.j.me, false);
+ok("the coordinator is not assumed to be trained", r.j.me.trained, false);
+const coordId0 = r.j.me.id;
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "  coord  " } });
+ok("the same name again signs her in, rather than making a second of her", [r.status, r.j.me.id, r.j.created], [200, coordId0, false]);
+r = await call("GET", "?sections=club", { token: r.j.token });
+ok("and the token it hands back works straight away", [r.status, r.j.me.name], [200, "Coord"]);
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "" } });
+ok("a nameless sign-in is refused", r.status, 400);
 ok("secret was generated in the store", store._map.has("secret"), true);
 r = await call("POST", "?a=login", { body: { code: "AAAA-AAAA" } }); ok("login with a bad code is 401", r.status, 401);
-r = await call("POST", "?a=login", { body: { code: coordCode.toLowerCase().replace("-", " ") } });
-ok("login tolerates case and separators", [r.status, r.j.me.secretary], [200, true]);
+r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord" } });
 const coord = r.j.token, coordId = r.j.me.id;
 r = await call("GET", "?sections=club", { token: coord });
 ok("a club defaults to 3 leaders, 1 trained on a club night, none at an event",
@@ -56,7 +62,7 @@ r = await call("GET", "?sections=club", { token: coord.slice(0, -2) + "zz" }); o
 // People, and the training flag.
 r = await call("POST", "?a=person", { token: coord, body: { name: "Trained One", sections: ["club", "bad key!"], trained: true } });
 ok("coordinator adds a trained leader; bad club keys dropped", [r.status, r.j.person.trained, r.j.person.sections], [200, true, ["club"]]);
-let trainedCode = r.j.code; const trainedId = r.j.person.id;
+let trainedAdminToken = null; const trainedId = r.j.person.id;
 r = await call("POST", "?a=person", { token: coord, body: { name: "Helper One", sections: ["club"] } });
 ok("someone added without the flag is not trained", r.j.person.trained, false);
 const helperCode = r.j.code, helperId = r.j.person.id;
@@ -306,10 +312,11 @@ r = await call("POST", "?a=person", { token: coord, body: { name: "Y" } });     
 { const raw = JSON.parse(store._map.get("roster").value); raw.people.forEach(p => { p.secretary = false; }); store._map.set("roster", { value: JSON.stringify(raw), etag: "orphan" });
   r = await call("POST", "?a=person", { token: coord, body: { name: "Nobody's Add" } });
   ok("with no coordinator at all, nobody can touch the roster", r.status, 403);
-  r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Trained One" } });
-  ok("but the admin password makes one again, from someone already on it", [r.status, r.j.person.secretary], [200, true]);
-  trainedCode = r.j.code; }
-r = await call("POST", "?a=login", { body: { code: trainedCode } }); const trained = r.j.token;
+  r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Trained One" } });
+  ok("but her name and the password make one again, from someone already on it", [r.status, r.j.me.secretary], [200, true]);
+  ok("and it does not change the code she already had", r.j.code, undefined);
+  trainedAdminToken = r.j.token; }
+const trained = trainedAdminToken;
 r = await call("POST", "?a=person-remove", { token: trained, body: { id: coordId, sections: ["club"] } });
 ok("removing someone takes them off the roster", [r.status, r.j.people.some(p => p.id === coordId)], [200, false]);
 r = await call("GET", "?sections=club", { token: coord }); ok("a removed person's token is revoked", r.status, 401);

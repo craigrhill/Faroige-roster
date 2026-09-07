@@ -965,11 +965,11 @@ function createHandler(storeFactory) {
           entries
         });
       }
-      if (req.method === "POST" && a === "bootstrap") {
+      if (req.method === "POST" && a === "admin-login") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
         const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0 }));
         const waitMs = (guard.doc.until || 0) - Date.now();
-        if (waitMs > 0) return fail(429, `Too many wrong tries. Setup is shut for another ${Math.ceil(waitMs / 6e4)} minute${Math.ceil(waitMs / 6e4) === 1 ? "" : "s"}.`);
+        if (waitMs > 0) return fail(429, `Too many wrong tries. Signing in is shut for another ${Math.ceil(waitMs / 6e4)} minute${Math.ceil(waitMs / 6e4) === 1 ? "" : "s"}.`);
         if (!adminOk(req)) {
           await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => {
             d.fails = (d.fails || 0) + 1;
@@ -986,22 +986,23 @@ function createHandler(storeFactory) {
         const b2 = await body(req);
         const name = cleanName(b2 && b2.name);
         if (!name) return fail(400, "A name is needed.");
-        const code = newCode();
-        let person;
+        let person, created = false;
         await update(store, "roster", rosterFallback, (doc) => {
           person = doc.people.find((p) => p.name.toLowerCase() === name.toLowerCase());
           const sections = cleanSections(b2 && b2.sections);
           if (person) {
+            const already = person.secretary && !sections.some((k) => !(person.sections || []).includes(k));
             person.secretary = true;
-            person.codeHash = codeHash(sec, code);
             if (sections.length) person.sections = [.../* @__PURE__ */ new Set([...person.sections || [], ...sections])];
+            if (already) return false;
           } else {
-            person = makePerson({ name, sections, secretary: true }, sec, code);
+            created = true;
+            person = makePerson({ name, sections, secretary: true }, sec, newCode());
             doc.people.push(person);
           }
           return doc;
         });
-        return json(200, { person: pub(person), code });
+        return json(200, { token: issueToken(sec, person.id), me: pub(person), created });
       }
       if (req.method === "POST" && a === "login") {
         const b2 = await body(req);

@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 129 cases
+    tools/test-foroige.mjs  offline harness, 132 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -113,7 +113,17 @@ the pages pretty (`/events`) or as files.
 
 ## Signing in, and first come first served
 
-**Nobody types a code.** A person's code is handed out as a link,
+**The coordinator signs in with her name and the password.** `?a=admin-login`
+takes `x-admin-password` and a name, and hands back a token: no code, no
+link, nothing to lose. If that name is not on the roster it is added as
+coordinator, and if it is there but is not one it becomes one, which is how
+the first coordinator is made and how a lost one is recovered. Signing in
+does **not** rotate her code, since that would break a link she had been
+given. It is the roster page's only way in, and the same throttle guards it,
+which is what a four digit password rests on.
+
+**Nobody else types a code either.** A volunteer's code is handed out as a
+link,
 `/rota?c=XXXX-XXXX`, built by `codeLink()`. `signInFromLink()` spends it on
 the first load, stores the token, and `dropCodeFromUrl()` takes it straight
 back out of the address bar with `history.replaceState`. A link beats the
