@@ -61,8 +61,12 @@ advisory: the function never refuses a tick for going over them.
 
 ## The calendar
 
-The coordinator keeps it on the roster page and it lives in the store under
-`calendar`, as `entries: [{ id, kind, date, endDate?, title, location,
+The coordinator keeps it on the roster page, where it reads as the same list
+of nights everybody else sees, one row each with an Edit. Only an open row
+shows input boxes, and adding a night opens straight into them, since a new
+night has nothing to show yet. Which rows are open is held in `openRows` by
+position, and cleared on any add, remove or save so it can never point at the
+wrong night. It lives in the store under `calendar`, as `entries: [{ id, kind, date, endDate?, title, location,
 details, need?, needTrained?, off? }]`. `kind` is `m` for a club night and `e` for
 an event, and that is what decides whether the training rule applies.
 `details` is the line shown on the rota under the heading. `need` and

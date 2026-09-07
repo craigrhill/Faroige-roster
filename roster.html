@@ -98,6 +98,9 @@ let C = null, D = null;
 // The calendar is held here while it is being edited and written in one go, so
 // a half-typed date is never saved and a reload cannot wipe unsaved changes.
 let CAL = null, calDirty = false;
+// Which rows are open for editing. Kept by position and cleared whenever the
+// list itself changes, so it can never point at the wrong night.
+let openRows = new Set();
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
 function sectionName(k){ return (C.settings.sections.find(x => x.key === k) || {}).name || k; }
 const personById = id => (D.people || []).find(p => p.id === id);
@@ -147,16 +150,21 @@ const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => 
 const keys = () => C.settings.sections.map(x => x.key);
 async function load(){
   showErr(""); D = await api("GET", "?sections=" + keys().join(","));
-  if (!calDirty) CAL = calFromServer().length || (D.calendar && D.calendar.updatedAt) ? calFromServer() : fromConfig();
+  if (!calDirty) { CAL = calFromServer().length || (D.calendar && D.calendar.updatedAt) ? calFromServer() : fromConfig(); openRows = new Set(); }
   $("gate").hidden = true; $("app").hidden = false; render();
 }
 const iso = (d) => d.toISOString().slice(0, 10);
 function addEntry(kind){
   const d = new Date(); d.setDate(d.getDate() + 7);
-  CAL.push({ kind, date: iso(d), endDate: "", title: kind === "m" ? "Club night" : "", location: "", details: "" });
-  calDirty = true; renderCal(); 
-  const last = $("calList").lastElementChild; if (last) last.querySelector("input[type=text]").focus();
+  CAL.push({ kind, date: iso(d), endDate: "", title: kind === "m" ? "Club night" : "", location: "", details: "", need: null, needTrained: null, off: false });
+  calDirty = true;
+  // A new night is the one case that wants every box at once: it has nothing
+  // to show yet.
+  openRows = new Set([CAL.length - 1]);
+  renderCal();
+  const open = $("calList").querySelector(".entry.open input[type=text]"); if (open) open.focus();
 }
+function toggleRow(i){ openRows.has(i) ? openRows.delete(i) : openRows.add(i); renderCal(); }
 const usualText = e => e.need == null && e.needTrained == null ? "as usual" : "just this one";
 function setEntry(i, field, v){
   if (field === "need" || field === "needTrained") v = v === "" ? null : Number(v);
@@ -165,7 +173,21 @@ function setEntry(i, field, v){
   // it, so this one hint is updated in place.
   const tag = document.querySelector(`[data-usual="${i}"]`);
   if (tag) tag.textContent = usualText(CAL[i]); $("calSave").textContent = "Save the calendar"; $("calMsg").textContent = ""; }
-function removeEntry(i){ if (!confirm("Take " + (CAL[i].title || "this night") + " off the calendar? Anyone already down for it loses their place on it.")) return; CAL.splice(i, 1); calDirty = true; renderCal(); }
+function removeEntry(i){ if (!confirm("Take " + (CAL[i].title || "this night") + " off the calendar? Anyone already down for it loses their place on it.")) return; CAL.splice(i, 1); calDirty = true; openRows = new Set(); renderCal(); }
+// What a night reads as when it is not being edited: the same shape as the
+// list everybody else sees, so the coordinator is looking at what they look at.
+function summary(e, i){
+  const sec0 = C.settings.sections[0] || {};
+  const where = e.location || (e.kind === "m" ? sec0.venue : "");
+  const sub = [e.kind === "m" ? sec0.time : "", where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
+  const n = def(e), need = e.need ?? n.need, needT = e.needTrained ?? n.needTrained;
+  return `<div class="slot-head">
+      <div><span class="when">${esc(e.date ? fmt(e.date) : "No date")}</span> <span class="sub">${esc(e.title || "Not named yet")}${sub ? ", " + esc(sub) : ""}</span></div>
+      <span class="rowtools">${e.off ? `<span class="status off">Called off</span>` : ""}<button class="btn quiet" onclick="toggleRow(${i})">Edit</button><button class="btn quiet" title="Remove" onclick="removeEntry(${i})">&#x2715;</button></span>
+    </div>
+    ${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}
+    <p class="rowneeds">${need} leader${need === 1 ? "" : "s"}${needT ? `, ${needT} with ${esc(TRAIN.short)}` : ""}${e.need == null && e.needTrained == null ? "" : ` <span class="custom">just this one</span>`}</p>`;
+}
 function renderNums(){
   const one = C.settings.sections.length === 1;
   $("nums").innerHTML = C.settings.sections.map(x => {
@@ -186,10 +208,10 @@ const setNums = (key, field, v) => guarded(async () => {
 function renderCal(){
   const taken = !!(D.calendar && D.calendar.updatedAt);
   $("calNote").textContent = taken
-    ? "The club nights and events on the rota. Changing a date or a name keeps everyone already down for that night. Called off leaves it on the rota greyed out, rather than losing who was on it."
+    ? "The club nights and events on the rota. Edit opens one up. Changing a date or a name keeps everyone already down for that night, and Called off leaves it on the rota greyed out rather than losing who was on it."
     : "These are coming from the site's setup file. Save the calendar to take it over, and it can be edited here from then on.";
   $("calSave").textContent = calDirty || !taken ? "Save the calendar" : "Saved";
-  $("calList").innerHTML = CAL.map((e, i) => `<div class="entry">
+  $("calList").innerHTML = CAL.map((e, i) => openRows.has(i) ? `<div class="entry open">
     <div class="entry-row">
       <select oninput="setEntry(${i},'kind',this.value)"><option value="m" ${e.kind === "m" ? "selected" : ""}>Club night</option><option value="e" ${e.kind === "e" ? "selected" : ""}>Event</option></select>
       <input type="date" value="${esc(e.date)}" oninput="setEntry(${i},'date',this.value)" aria-label="Date">
@@ -205,14 +227,15 @@ function renderCal(){
       <label class="pick"><span>Leaders</span><input type="number" min="1" max="9" value="${e.need ?? ""}" placeholder="${def(e).need}" oninput="setEntry(${i},'need',this.value)" aria-label="Leaders needed"></label>
       <label class="pick"><span>of them with ${esc(TRAIN.short)}</span><input type="number" min="0" max="9" value="${e.needTrained ?? ""}" placeholder="${def(e).needTrained}" oninput="setEntry(${i},'needTrained',this.value)" aria-label="Trained leaders needed"></label>
       <span data-usual="${i}">${usualText(e)}</span>
-      <label class="pick" style="margin-left:auto"><input type="checkbox" ${e.off ? "checked" : ""} onchange="setEntry(${i},'off',this.checked)"><span>Called off</span></label>
+      <label class="pick"><input type="checkbox" ${e.off ? "checked" : ""} onchange="setEntry(${i},'off',this.checked)"><span>Called off</span></label>
+      <span style="margin-left:auto"><button class="btn" onclick="toggleRow(${i})">Done</button></span>
     </div>
-  </div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
+  </div>` : `<div class="entry">${summary(e, i)}</div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
 }
 const saveCal = () => guarded(async () => {
   $("calMsg").textContent = ""; $("calMsg").className = "msg";
   const r = await api("POST", "?a=calendar", { entries: CAL });
-  calDirty = false; D.calendar = r.calendar; CAL = calFromServer();
+  calDirty = false; D.calendar = r.calendar; CAL = calFromServer(); openRows = new Set();
   $("calMsg").textContent = r.calendar.entries.length + " on the calendar, saved.";
   renderCal();
 });

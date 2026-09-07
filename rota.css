@@ -89,6 +89,9 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .tools label{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}
 .add{display:grid;gap:.55rem;margin-top:.8rem}
 .entry{display:grid;gap:.45rem;padding:.7rem 0;border-top:1px solid var(--stone-100)}
+.entry.open{background:var(--stone-50);border-radius:12px;padding:.75rem;margin:.35rem 0;border-top-color:transparent}
+.rowtools{margin-left:auto;display:flex;align-items:center;gap:.25rem;flex-wrap:wrap}
+.rowneeds{margin:.15rem 0 0;font-size:.85rem;color:var(--stone-400)}
 .entry:first-child{border-top:0}
 .entry-row{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
 .entry-row input[type=text]{flex:1 1 12rem;min-width:8rem}

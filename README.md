@@ -90,7 +90,9 @@ whoever she likes on.
 
 ## The calendar, once it is running
 
-The coordinator keeps it on the roster page, under Calendar. Each night has
+The coordinator keeps it on the roster page, under Calendar. It reads as the
+same list of nights everybody else sees: a row each, with an Edit. Editing
+one opens its boxes; adding a night opens straight into them. Each night has
 a kind (club night or event), a date, a name, somewhere to be, a line of
 description that shows on the rota under the heading, and how many leaders it
 needs if that is not the usual number. Events also take a last day, for
