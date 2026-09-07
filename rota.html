@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
-<title>Rota: Foroige club leaders</title>
+<title>Rota: Foróige club</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="rota.css">
 </head>
 <body>
 <header class="appbar"><div class="wrap">
-  <div class="brand"><span data-club-name>Foroige club</span><small>Leaders' rota</small></div>
+  <div class="brand"><span data-club-name>Foróige club</span><small>Leaders' rota</small></div>
   <span class="pill">Leaders only</span>
 </div></header>
 <main class="wrap">
@@ -20,12 +20,12 @@
 
   <section id="gate" hidden>
     <h1>Sign in</h1>
-    <p class="muted">Open the link the club coordinator sent you and you are in, nothing to type. If you only have the code from it, put it in here. Either way this phone stays signed in for twelve months.</p>
+    <p class="muted">Open the link the coordinator sent you and you are in, nothing to type. If you only have the code from it, put it in here. Either way this phone stays signed in for twelve months.</p>
     <div class="card">
       <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
       <p class="msg" id="gateMsg"></p>
     </div>
-    <p class="small muted">No code? Ask the club coordinator, who keeps the roster.</p>
+    <p class="small muted">No link? Ask the coordinator, who keeps the roster.</p>
   </section>
 
   <section id="app" hidden>
@@ -130,13 +130,13 @@ function reason(st){
 }
 
 function render(){
-  // The rota is where a club leader or the coordinator overrides what self
-  // service has left behind: either of them puts anyone on or takes them off.
-  const k = sec(), me = D.me, lead = !!me.lead || !!me.secretary, sect = D.sections[k] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, slots: {} };
+  // The rota is where the coordinator overrides what self service has left
+  // behind: she puts anyone on a night, or takes them off.
+  const k = sec(), me = D.me, boss = !!me.secretary, sect = D.sections[k] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, slots: {} };
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
   $("rosterLink").hidden = !me.secretary;
-  $("shareCard").hidden = !lead;
-  if (lead) for (const [id, q] of [["gapsLink", "?gaps"], ["calLink", ""]]) { const u = pageLink("events", q); $(id).textContent = u; $(id).href = u; }
+  $("shareCard").hidden = !boss;
+  if (boss) for (const [id, q] of [["gapsLink", "?gaps"], ["calLink", ""]]) { const u = pageLink("events", q); $(id).textContent = u; $(id).href = u; }
   const many = C.settings.sections.length > 1;
   $("chips").hidden = !many;
   if (many) $("chips").innerHTML = C.settings.sections.map(x => `<button class="chip ${x.key === k ? "on" : ""}" onclick="pick('${esc(x.key)}')">${esc(x.name)}</button>`).join("");
@@ -148,7 +148,7 @@ function render(){
   // Worth calling out separately: nights that have the leaders but nobody trained.
   const noTrained = bad.filter(o => o.st.shortTrained && !o.st.shortPeople).length;
   // What the person who just opened their link most needs to know.
-  const openToMe = lead ? 0 : live.filter(x => placeForMe(k, x.id) === "can").length;
+  const openToMe = boss ? 0 : live.filter(x => placeForMe(k, x.id) === "can").length;
   const call = $("callout");
   if (!live.length) call.hidden = true;
   else {
@@ -156,7 +156,7 @@ function render(){
     call.className = "banner" + (bad.length ? "" : " good");
     call.innerHTML = !bad.length
       ? `<b>Every night is covered.</b> Nothing needed from you.`
-      : lead
+      : boss
         ? `<b>${bad.length} of ${live.length} still short.</b> ${noTrained ? `${noTrained} of those ${noTrained === 1 ? "has" : "have"} the leaders but nobody with ${esc(TRAIN.short)}. ` : ""}Put people on below, or chase them with the sharing link at the foot of this page.`
         : openToMe
           ? `<b>${bad.length} night${bad.length === 1 ? "" : "s"} still short.</b> You can take ${openToMe === bad.length ? (openToMe === 1 ? "it" : "any of them") : openToMe + " of them"}, marked below.`
@@ -166,7 +166,7 @@ function render(){
   $("gaps").innerHTML = (live.length
       ? `<div class="gap ${bad.length ? "warn" : "ok"}"><span>${live.length - bad.length} of ${live.length} covered${noTrained ? `, ${noTrained} with leaders but nobody trained` : ""}</span><span class="count">${sect.required} needed, ${sect.requiredTrained} trained</span></div>`
       : "")
-    + (bad.map(o => `<div class="gap${!lead && placeForMe(k, o.x.id) === "can" ? " open" : ""}"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
+    + (bad.map(o => `<div class="gap${!boss && placeForMe(k, o.x.id) === "can" ? " open" : ""}"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
       || (live.length ? "" : `<div class="empty">No dates yet. They go in rota-config.json once they are confirmed.</div>`));
 
   $("slots").innerHTML = slots.map(x => {
@@ -180,11 +180,11 @@ function render(){
     const listed = [...names]; s.who.forEach(id => { if (!listed.some(p => p.id === id)) { const p = personById(id); if (p) listed.push(p); } });
     listed.sort(byTrainedThenName);
     // Who is on the night, as chips you can take off, and how to add someone.
-    // A club leader gets two pull-downs, the approved people kept separate
+    // The coordinator gets two pull-downs, the approved people kept separate
     // because that is the one a night cannot go ahead without. Everyone else
     // can only put themselves on, so they get a button instead of a list.
     const onIt = listed.filter(p => s.who.includes(p.id)), free = listed.filter(p => !s.who.includes(p.id));
-    const chips = onIt.map(p => { const can = lead || p.id === me.id;
+    const chips = onIt.map(p => { const can = boss || p.id === me.id;
       return `<span class="who-chip${p.id === me.id ? " me" : ""}">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}${can ? `<button class="x" title="Take ${esc(p.name)} off this night" onclick="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',false)">&#x2715;</button>` : ""}</span>`; }).join("");
     const picker = (label, arr) => `<label class="pick"><span>${esc(label)}</span><select ${arr.length ? "" : "disabled"} onchange="if(this.value)tick('${esc(k)}','${esc(x.id)}',this.value,true);this.selectedIndex=0"><option value="">${arr.length ? "add one" : "all on already"}</option>${arr.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`;
     const place = placeForMe(k, x.id);
@@ -194,7 +194,7 @@ function render(){
       held: `<span class="shut">Full, apart from a place held for someone with ${esc(TRAIN.short)}</span>`,
       full: `<span class="shut">Full. First come, first served.</span>`
     }[place];
-    const controls = lead
+    const controls = boss
       ? `<div class="picks">${picker(TRAIN.label, free.filter(p => p.trained))}${picker("Other leaders", free.filter(p => !p.trained))}</div>`
       : `<div class="picks">${mine}</div>`;
     return `<div class="slot${off ? "" : place === "can" ? " open" : !st.ok ? " short" : ""}">

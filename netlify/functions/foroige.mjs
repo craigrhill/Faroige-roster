@@ -896,7 +896,7 @@ var MAX_ENTRIES = 200;
 var isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
 var clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 var sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
-var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
+var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, secretary: !!p.secretary });
 var isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 var isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 var cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
@@ -920,7 +920,6 @@ function makePerson(b, sec, code) {
     name: cleanName(b.name),
     sections: cleanSections(b.sections),
     trained: !!b.trained,
-    lead: !!b.lead,
     secretary: !!b.secretary,
     codeHash: codeHash(sec, code),
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -976,12 +975,11 @@ function createHandler(storeFactory) {
           person = doc.people.find((p) => p.name.toLowerCase() === name.toLowerCase());
           const sections = cleanSections(b2 && b2.sections);
           if (person) {
-            person.lead = true;
             person.secretary = true;
             person.codeHash = codeHash(sec, code);
             if (sections.length) person.sections = [.../* @__PURE__ */ new Set([...person.sections || [], ...sections])];
           } else {
-            person = makePerson({ name, sections, lead: true, secretary: true }, sec, code);
+            person = makePerson({ name, sections, secretary: true }, sec, code);
             doc.people.push(person);
           }
           return doc;
@@ -1004,8 +1002,7 @@ function createHandler(storeFactory) {
       const roster = await readDoc(store, "roster", rosterFallback);
       const me = roster.doc.people.find((p) => p.id === t.id);
       if (!me) return fail(401, "Please sign in.");
-      const hasSecretary = roster.doc.people.some((p) => p.secretary);
-      const canManage = !!me.secretary || !hasSecretary && !!me.lead;
+      const canManage = !!me.secretary;
       if (req.method === "GET") {
         const keys = (url.searchParams.get("sections") || "").split(",").map((s) => s.trim()).filter(isKey);
         const sections = {};
@@ -1020,7 +1017,7 @@ function createHandler(storeFactory) {
           };
         }
         const mine = new Set(me.sections || []);
-        const visible = me.lead || canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
+        const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
         return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
@@ -1033,7 +1030,7 @@ function createHandler(storeFactory) {
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        const boss = me.lead || canManage;
+        const boss = canManage;
         if (!boss && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
         const cal = await readDoc(store, "calendar", calendarFallback);
         const entry = (cal.doc.entries || []).find((e) => b.id === e.kind + ":" + e.id) || {};
@@ -1049,7 +1046,7 @@ function createHandler(storeFactory) {
             const held = Math.max(0, needT - trained);
             const ok = trainedIds.has(me.id) ? on < need || held > 0 : on < need - held;
             if (!ok) {
-              refused = held > 0 && on < need ? "That night is full apart from a place held for someone with the training." : "That night is full. Ask the club leader if you need to be on it.";
+              refused = held > 0 && on < need ? "That night is full apart from a place held for someone with the training." : "That night is full. Ask the coordinator if you need to be on it.";
               return false;
             }
           }
@@ -1192,7 +1189,6 @@ function createHandler(storeFactory) {
             }
             if ("sections" in b) person.sections = cleanSections(b.sections);
             if ("trained" in b) person.trained = !!b.trained;
-            if ("lead" in b) person.lead = !!b.lead;
             if ("secretary" in b) person.secretary = !!b.secretary;
             return d;
           });

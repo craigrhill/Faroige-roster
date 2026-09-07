@@ -27,7 +27,8 @@ r = await call("OPTIONS", "");                              ok("OPTIONS is 204",
 r = await call("GET", "?sections=club");                    ok("GET without token is 401", r.status, 401);
 r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } }); ok("bootstrap with wrong password is 401", r.status, 401);
 r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
-ok("bootstrap creates a coordinator who is also a club leader, in the club", [r.status, r.j.person.secretary, r.j.person.lead, r.j.person.sections], [200, true, true, ["club"]]);
+ok("bootstrap creates the coordinator, in the club", [r.status, r.j.person.secretary, r.j.person.sections], [200, true, ["club"]]);
+ok("and there is no club leader flag on anyone any more", "lead" in r.j.person, false);
 ok("the first coordinator is not assumed to be trained", r.j.person.trained, false);
 const coordCode = r.j.code; ok("code has the expected shape", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(coordCode), true);
 ok("secret was generated in the store", store._map.has("secret"), true);
@@ -43,7 +44,7 @@ r = await call("GET", "?sections=club", { token: coord.slice(0, -2) + "zz" }); o
 // People, and the training flag.
 r = await call("POST", "?a=person", { token: coord, body: { name: "Trained One", sections: ["club", "bad key!"], trained: true } });
 ok("coordinator adds a trained leader; bad club keys dropped", [r.status, r.j.person.trained, r.j.person.sections], [200, true, ["club"]]);
-const trainedCode = r.j.code, trainedId = r.j.person.id;
+let trainedCode = r.j.code; const trainedId = r.j.person.id;
 r = await call("POST", "?a=person", { token: coord, body: { name: "Helper One", sections: ["club"] } });
 ok("someone added without the flag is not trained", r.j.person.trained, false);
 const helperCode = r.j.code, helperId = r.j.person.id;
@@ -60,26 +61,27 @@ ok("bulk add returns codes for the new names only", [r.status, r.j.added.length,
 ok("bulk add carries the training flag", r.j.added.map(a => a.person.trained), [true, false]);
 ok("bulk codes are all different", new Set(r.j.added.map(a => a.code)).size, 2);
 ok("bulk add never makes anyone a coordinator", r.j.added.every(a => a.person.secretary === false), true);
+ok("and nobody comes out of it with a role beyond volunteer", r.j.added.every(a => !("lead" in a.person)), true);
 const bulkTrainedId = r.j.added[0].person.id;
 r = await call("POST", "?a=people", { token: coord, body: { people: [{ name: "Bulk Plain" }] } });
 ok("a bulk add of only known names adds nobody", [r.status, r.j.added.length, r.j.skipped], [200, 0, ["Bulk Plain"]]);
 r = await call("POST", "?a=people", { token: coord, body: { people: [] } }); ok("an empty bulk add is 400", r.status, 400);
 r = await call("POST", "?a=login", { body: { code: helperCode } }); const helper = r.j.token;
-r = await call("POST", "?a=people", { token: helper, body: { people: [{ name: "Sneaky" }] } }); ok("a plain leader cannot bulk add", r.status, 403);
+r = await call("POST", "?a=people", { token: helper, body: { people: [{ name: "Sneaky" }] } }); ok("a volunteer cannot bulk add", r.status, 403);
 
 // Ticking, and the two thresholds.
 const night = "m:2030-01-02";
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [helperId] } });
 ok("a leader ticks themselves", [r.status, r.j.section.slots[night].who], [200, [helperId]]);
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [coordId] } });
-ok("a leader cannot put someone else on", [r.status, r.j.error], [403, "You can only put yourself on a night."]);
+ok("a volunteer cannot put someone else on", [r.status, r.j.error], [403, "You can only put yourself on a night."]);
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, need: 4 } });
 ok("a night's numbers are not taken here at all, not even from a leader", [r.status, r.j.error], [403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator."]);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, needTrained: 0 } });
 ok("nor from the coordinator, who sets them on the calendar", r.status, 403);
 r = await call("POST", "?a=person", { token: helper, body: { name: "X" } });                                 ok("nor add people", r.status, 403);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, add: [coordId, bulkTrainedId] } });
-ok("the club leader ticks two more in", r.j.section.slots[night].who.length, 3);
+ok("the coordinator puts two more on", r.j.section.slots[night].who.length, 3);
 
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 2 } });
 ok("the coordinator raises the trained number", [r.status, r.j.section.requiredTrained], [200, 2]);
@@ -93,7 +95,7 @@ ok("needing nobody trained is allowed, for a club with no rule", [r.status, r.j.
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 1 } });
 ok("and back to one, leaving the leaders number alone", [r.j.section.required, r.j.section.requiredTrained], [3, 1]);
 r = await call("POST", "?a=required", { token: helper, body: { section: "club", required: 2 } });
-ok("a plain leader cannot set the club's numbers", [r.status, r.j.error], [403, "Only the club coordinator can change that."]);
+ok("a volunteer cannot set the club's numbers", [r.status, r.j.error], [403, "Only the club coordinator can change that."]);
 
 // A single night that is different: set on its calendar entry, not here.
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
@@ -121,7 +123,7 @@ ok("an empty box is blank too", ["need" in r.j.calendar.entries[0], "needTrained
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, needTrained: 0 }] } });
 ok("but nought typed in is a real answer: this one needs nobody trained", r.j.calendar.entries[0].needTrained, 0);
 r = await call("POST", "?a=calendar", { token: helper, body: { entries: [] } });
-ok("a plain leader cannot set a night's numbers either", r.status, 403);
+ok("a volunteer cannot set a night's numbers either", r.status, 403);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
 ok("the calendar clears again for the tests that follow", r.j.calendar.entries, []);
 
@@ -137,7 +139,7 @@ r = await call("POST", "?a=slot", { token: coord, body: { section: "Club!", id: 
 // The page needs the training flag on every person to count a night, so it
 // must survive a GET.
 r = await call("GET", "?sections=club", { token: helper });
-ok("everyone in the club is visible to a plain leader", r.j.people.length, 5);
+ok("everyone in the club is visible to a volunteer", r.j.people.length, 5);
 ok("the trained flag comes back with each person", r.j.people.filter(p => p.trained).map(p => p.name).sort(), ["Bulk Trained", "Trained One"]);
 ok("no code hashes leak in GET", JSON.stringify(r.j).includes("codeHash"), false);
 
@@ -163,7 +165,7 @@ ok("and back to nobody trained at an event", r.j.section.requiredTrainedEvents, 
 r = await call("GET", "?sections=club", { token: coord });
 ok("an empty calendar is what makes the pages fall back to the setup file", r.j.calendar.entries, []);
 r = await call("POST", "?a=calendar", { token: helper, body: { entries: [] } });
-ok("a plain leader cannot change the calendar", r.status, 403);
+ok("a volunteer cannot change the calendar", r.status, 403);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
   { kind: "e", date: "2030-05-01", title: "  Day trip  to Galway ", location: "Galway city", details: "Bus leaves at nine.", endDate: "2030-05-02" },
   { kind: "m", date: "2030-04-03", title: "Club night", details: "Bring runners." },
@@ -227,18 +229,18 @@ const meD = (await call("GET", "?sections=club", { token: tD })).j.me.id;
 r = await call("POST", "?a=slot", { token: tD, body: { section: "club", id: fullId, add: [meD] } });
 ok("the trained one takes it", [r.status, r.j.section.slots[fullId].who.length], [200, 3]);
 r = await call("POST", "?a=slot", { token: tC, body: { section: "club", id: fullId, add: [meC] } });
-ok("now it is simply full", [r.status, r.j.error], [409, "That night is full. Ask the club leader if you need to be on it."]);
+ok("now it is simply full", [r.status, r.j.error], [409, "That night is full. Ask the coordinator if you need to be on it."]);
 r = await call("POST", "?a=slot", { token: tA, body: { section: "club", id: fullId, remove: [plainA] } });
 ok("anyone can still take themselves off a full night", r.j.section.slots[fullId].who.length, 2);
 r = await call("POST", "?a=slot", { token: tC, body: { section: "club", id: fullId, add: [meC] } });
 ok("which opens the place up again, first come first served", [r.status, r.j.section.slots[fullId].who.length], [200, 3]);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: fullId, add: [coordId] } });
-ok("a club leader is not held to the numbers and can go over", r.j.section.slots[fullId].who.length, 4);
+ok("the coordinator is not held to the numbers and can go over", r.j.section.slots[fullId].who.length, 4);
 // A night that has gone full with nobody trained must not deadlock.
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-06-14", title: "Stuck night" }] } });
 const stuck = "m:" + r.j.calendar.entries.find(e => e.title === "Stuck night").id;
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: stuck, add: [plainA, meC, coordId] } });
-ok("three untrained on it, put there by the club leader", r.j.section.slots[stuck].who.length, 3);
+ok("three untrained on it, put there by the coordinator", r.j.section.slots[stuck].who.length, 3);
 r = await call("POST", "?a=slot", { token: tB, body: { section: "club", id: stuck, add: [(await call("GET", "?sections=club", { token: tB })).j.me.id] } });
 ok("another untrained one is refused", r.status, 409);
 r = await call("POST", "?a=slot", { token: tD, body: { section: "club", id: stuck, add: [meD] } });
@@ -277,18 +279,24 @@ r = await call("POST", "?a=login", { body: { code: newCode } });    ok("new code
 const helper2 = r.j.token;
 r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: false } });
 ok("the coordinator can take the training flag off someone", r.j.person.trained, false);
-r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: true, lead: true } });
-ok("and put it back, with club leader too", [r.j.person.trained, r.j.person.lead], [true, true]);
-r = await call("POST", "?a=person-update", { token: helper2, body: { id: trainedId, trained: false } }); ok("a plain leader cannot change anyone's training", r.status, 403);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: true } });
+ok("and put it back", r.j.person.trained, true);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, lead: true } });
+ok("a lead flag sent by an old client is simply ignored", "lead" in r.j.person, false);
+r = await call("POST", "?a=person-update", { token: helper2, body: { id: trainedId, trained: false } }); ok("a volunteer cannot change anyone's training", r.status, 403);
 r = await call("POST", "?a=person-update", { token: coord, body: { id: coordId, secretary: false } }); ok("cannot demote the only coordinator", r.status, 409);
 r = await call("POST", "?a=person-remove", { token: coord, body: { id: coordId, sections: [] } });     ok("cannot remove the only coordinator", r.status, 409);
 r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, secretary: true } }); ok("a second coordinator can be made", r.j.person.secretary, true);
 r = await call("POST", "?a=person-update", { token: coord, body: { id: coordId, secretary: false } });  ok("now the first can step down", r.status, 200);
 r = await call("POST", "?a=person", { token: coord, body: { name: "Y" } });                             ok("and loses roster powers at once", r.status, 403);
-// A roster with club leaders but no coordinator: leads keep roster powers.
-{ const raw = JSON.parse(store._map.get("roster").value); raw.people.forEach(p => { p.secretary = false; p.lead = true; }); store._map.set("roster", { value: JSON.stringify(raw), etag: "legacy" });
-  r = await call("POST", "?a=person", { token: coord, body: { name: "Legacy Add" } }); ok("with no coordinator, a club leader can still manage the roster", r.status, 200);
-  const raw2 = JSON.parse(store._map.get("roster").value); raw2.people = raw2.people.filter(p => p.name !== "Legacy Add"); raw2.people.find(p => p.id === trainedId).secretary = true; store._map.set("roster", { value: JSON.stringify(raw2), etag: "legacy2" }); }
+// A roster left with nobody able to keep it: the admin password is the way
+// back in, and it does not need the old club leader role to do it.
+{ const raw = JSON.parse(store._map.get("roster").value); raw.people.forEach(p => { p.secretary = false; }); store._map.set("roster", { value: JSON.stringify(raw), etag: "orphan" });
+  r = await call("POST", "?a=person", { token: coord, body: { name: "Nobody's Add" } });
+  ok("with no coordinator at all, nobody can touch the roster", r.status, 403);
+  r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Trained One" } });
+  ok("but the admin password makes one again, from someone already on it", [r.status, r.j.person.secretary], [200, true]);
+  trainedCode = r.j.code; }
 r = await call("POST", "?a=login", { body: { code: trainedCode } }); const trained = r.j.token;
 r = await call("POST", "?a=person-remove", { token: trained, body: { id: coordId, sections: ["club"] } });
 ok("removing someone takes them off the roster", [r.status, r.j.people.some(p => p.id === coordId)], [200, false]);

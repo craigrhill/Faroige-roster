@@ -34,7 +34,7 @@ async function api(method, q, body, extra = {}) {
 
 // The club, its meeting night and its events come from rota-config.json beside
 // these pages. Fetched by relative path so the folder can be moved or renamed.
-const FALLBACK = { club: { name: "Foroige club" },
+const FALLBACK = { club: { name: "Foróige club" },
   training: { label: "Building training", short: "Building training" },
   settings: { sections: [{ key: "club", name: "Club night", day: "Wednesday" }] }, events: [] };
 let TRAIN = FALLBACK.training;
@@ -50,11 +50,11 @@ async function loadContent(){
   document.querySelectorAll("[data-club-name]").forEach(el => { el.textContent = c.club.name; });
   document.querySelectorAll("[data-training-label]").forEach(el => { el.textContent = c.training.label; });
   document.querySelectorAll("[data-training-short]").forEach(el => { el.textContent = c.training.short; });
-  if (c.club.name) document.title = document.title.replace("Foroige club", c.club.name);
+  if (c.club.name) document.title = document.title.replace(/Foróige club/, c.club.name);
   return c;
 }
 const trainedTag = p => p.trained ? `<span class="tag" title="${esc(TRAIN.label)}">${esc(TRAIN.short)}</span>` : "";
-const roleText = me => [me.secretary && "coordinator", me.lead && "club leader"].filter(Boolean).join(", ");
+const roleText = me => me.secretary ? "coordinator" : "";
 const byName = (a, b) => a.name.localeCompare(b.name, "en-IE");
 // On the rota, the people who can open the building come first: a night is not
 // covered without one of them, so they are the ones being looked for.

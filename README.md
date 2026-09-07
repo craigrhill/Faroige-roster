@@ -1,4 +1,4 @@
-# Foroige club rota
+# Foróige club rota
 
 Who is covering each club night and each event, behind a personal code.
 Nothing on these pages is public and no names are in this repo: the roster,
@@ -20,8 +20,8 @@ the club asks for.
 ## The three pages
 
     rota.html     for the club: the nights coming up, who is on them, and
-                  where the gaps are. Also where a club leader or the
-                  coordinator overrides what self service has produced
+                  where the gaps are. Also where the coordinator overrides
+                  what self service has produced
     roster.html   the coordinator's: the roster, the calendar, the numbers
     events.html   public. No sign-in and no names on it
 
@@ -36,9 +36,9 @@ the pages:
   whether it has been called off, and how many leaders it needs, for the club
   and for any single night. Adds people, marks who is approved, issues codes.
   There is always at least one.
-* **club leader** puts anyone on a night, or takes them off, and is not held
-  to the numbers. The coordinator can do the same. Everyone else puts on
-  themselves.
+* **volunteer** everybody else. Puts themselves on a night while there is a
+  place, and takes themselves off. There is no third role: a club leader one
+  existed and was taken out.
 
 **Nobody has to type anything.** Each person gets their own link, shown once
 on the roster page and sent to them however suits. Opening it signs that
@@ -54,8 +54,8 @@ night while there is a place. Once it has the leaders it needs, it closes.
 Two exceptions keep it from jamming: while a night still needs somebody with
 the training, that place is held and an untrained person cannot take it; and
 somebody with the training can get on a night that is already full but has
-nobody trained on it. A club leader is held to none of this and can put
-whoever they like on.
+nobody trained on it. The coordinator is held to none of this and can put
+whoever she likes on.
 
 ## Setting it up
 
@@ -64,7 +64,7 @@ whoever they like on.
    saves the calendar on the roster page it is kept in the store and this file
    is no longer read for nights or events.
 
-       { "club": { "name": "Ballyvaughan Foroige Club" },
+       { "club": { "name": "Ballyvaughan Foróige Club" },
          "training": { "label": "Building training", "short": "Building" },
          "settings": { "sections": [
            { "key": "club", "name": "Club night",
@@ -163,7 +163,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 120 offline cases
+    npm run test:function     # 124 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

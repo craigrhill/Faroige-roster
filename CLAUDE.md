@@ -1,6 +1,6 @@
-# Foroige club rota
+# Foróige club rota
 
-A volunteer rota for a Foroige club: who is covering each club night and each
+A volunteer rota for a Foróige club: who is covering each club night and each
 event, behind a personal code. Two static pages, one Netlify Function, no
 framework and no build for the pages.
 
@@ -37,7 +37,7 @@ numbers but nobody trained reads as a warning, not as covered.
 club's three on the numbers card, a single night's on its calendar row, where
 that night is created and edited. Whether a night is on at all is there too.
 `?a=slot` takes only `add` and `remove`, refusing `need`, `needTrained` and
-`off` from anyone, club leader included; `?a=required` is behind the same
+`off` from anyone at all; `?a=required` is behind the same
 coordinator gate as the roster and the calendar. The rota page has no
 settings on it at all: it states what a night needs and shows the gap. Its
 only controls are the two pull-downs, or one button for a plain leader.
@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 120 cases
+    tools/test-foroige.mjs  offline harness, 124 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -103,7 +103,7 @@ One page, two readings, on the same data:
 * `?gaps` adds a "Needs 2 more" against each night and the summary. That is
   the link to send when chasing leaders.
 
-Both links are on the rota page for a club leader or the coordinator, under
+Both links are on the rota page for the coordinator, under
 Links to share, built by `pageLink()` so they work whether Netlify is serving
 the pages pretty (`/events`) or as files.
 
@@ -120,10 +120,10 @@ Both pages carry `<meta name="referrer" content="no-referrer">`. Without it
 the Google Fonts request would carry the whole URL, code and all, in the
 Referer header.
 
-**The rota is where the overriding happens.** A club leader *or the
-coordinator* gets the pull-downs, can put anyone on or take them off, and is
-not held to the numbers. In the page that is the `lead` variable in
-`render()`, which is `me.lead || me.secretary`; in the function it is `boss`.
+**The rota is where the overriding happens.** The coordinator gets the
+pull-downs, can put anyone on or take them off, and is not held to the
+numbers. In the page that is the `lead` variable in `render()`, now just
+`me.secretary`; in the function it is `boss`.
 
 **A night fills up and then closes.** Anyone puts themselves on while there
 is a place; once there is not, the button is gone and `?a=slot` answers 409.
@@ -134,9 +134,9 @@ Two things stop that deadlocking, and both matter:
   three untrained people would fill a night that then could never be covered.
 * A trained person can get on **even when the night is already full**, if it
   still has nobody trained. That is the escape hatch for a night that got
-  into that state anyway, by a club leader's hand or a change of numbers.
+  into that state anyway, by the coordinator's hand or a change of numbers.
 
-A club leader is held to none of it and can go over the numbers. The rule is
+The coordinator is held to none of it and can go over the numbers. The rule is
 enforced in the function, inside the read-modify-write so two people racing
 for the last place cannot both win, and mirrored in `placeForMe()` on the
 page purely so the button knows what to say.
@@ -149,13 +149,19 @@ with `id`, `name`, `sections`, `trained`, `lead`, `secretary`, `codeHash`),
 `section/<key>` (the three numbers and `slots`, each slot `who` as person
 ids, `off`, and optional `need` and `needTrained`), `calendar` (see above).
 
-Roles are flags on a person and the function enforces them, not the pages.
-The field names are `secretary` and `lead`, kept so the two rotas stay
-diffable; the words shown are **coordinator** (keeps the roster) and **club
-leader** (sets the numbers, ticks anyone, calls a night off). Anyone else
-ticks only themselves. While no coordinator exists, club leaders hold the
-coordinator's powers so nobody is locked out. The roster always keeps at
-least one coordinator.
+There are two kinds of person, and the function enforces the difference, not
+the pages. The flag is `secretary`, kept under that name so the two rotas
+stay diffable; the word shown is **coordinator**. She keeps the roster, the
+calendar and the numbers, and on the rota she puts anyone on a night or takes
+them off without being held to those numbers. Everybody else is a
+**volunteer**: they put themselves on while there is a place and take
+themselves off, and that is all.
+
+**There is no club leader role.** It existed and was taken out: one
+coordinator and a flat list of volunteers is the whole model. A `lead` field
+sent by an old client is ignored rather than stored. The roster always keeps
+at least one coordinator, and the admin password makes another if the only
+one is ever lost.
 
 The first coordinator is created on `roster.html` under "First time setting
 this up?" with the admin password. The API is documented at the top of

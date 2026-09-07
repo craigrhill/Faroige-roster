@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
-<title>Roster: Foroige club coordinator</title>
+<title>Roster: Foróige club coordinator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="rota.css">
 </head>
 <body>
 <header class="appbar"><div class="wrap">
-  <div class="brand"><span data-club-name>Foroige club</span><small>Roster</small></div>
+  <div class="brand"><span data-club-name>Foróige club</span><small>Roster</small></div>
   <span class="pill">Coordinator</span>
 </div></header>
 <main class="wrap">
@@ -20,14 +20,14 @@
 
   <section id="gate" hidden>
     <h1>Sign in</h1>
-    <p class="muted">The roster is kept by the club coordinator. Open your link, or enter the code from it.</p>
+    <p class="muted">The roster is kept by the coordinator. Open your link, or enter the code from it.</p>
     <div class="card">
       <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
       <p class="msg" id="gateMsg"></p>
     </div>
     <details class="card">
       <summary>First time setting this up?</summary>
-      <p class="small muted" style="margin-top:.6rem">The site's admin password creates the coordinator and gives you a code. Do this once. If you already created yourself as a club leader, doing it again with the same name makes you coordinator and gives you a new code.</p>
+      <p class="small muted" style="margin-top:.6rem">The site's admin password creates the coordinator and gives you a code. Do this once. If the only coordinator's link is ever lost, doing it again with the same name issues a new one.</p>
       <div class="add">
         <input type="text" id="bootName" placeholder="Your name">
         <input type="password" id="bootPw" placeholder="Admin password" autocomplete="current-password">
@@ -55,7 +55,6 @@
         <input type="text" id="newName" placeholder="Name" autocomplete="off">
         <div class="secs" id="newSecs" hidden></div>
         <label class="small"><input type="checkbox" id="newTrained"> Holds <span data-training-label>the training</span></label>
-        <label class="small"><input type="checkbox" id="newLead"> Club leader: can put anyone on a night and call off a week</label>
         <label class="small"><input type="checkbox" id="newSecretary"> Coordinator: can change this roster</label>
         <div><button class="btn" onclick="addPerson()">Add and get a link</button></div>
       </div>
@@ -102,7 +101,7 @@ let CAL = null, calDirty = false;
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
 function sectionName(k){ return (C.settings.sections.find(x => x.key === k) || {}).name || k; }
 const personById = id => (D.people || []).find(p => p.id === id);
-const canManage = () => !!D.me.secretary || (!(D.people || []).some(p => p.secretary) && !!D.me.lead);
+const canManage = () => !!D.me.secretary;
 const many = () => C.settings.sections.length > 1;
 // With a single club there is nothing to choose: everyone added is in it.
 const defaultSections = () => many() ? [] : C.settings.sections.map(x => x.key);
@@ -114,7 +113,7 @@ function render(){
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
   $("intro").textContent = manage
     ? "Everyone who can be on the rota. Tick who holds the training: the rota will not count a club night as covered without one of them on it."
-    : "Only the club coordinator can change the roster. This is the list as it stands.";
+    : "Only the coordinator can change the roster. This is the list as it stands.";
   $("addForm").hidden = !manage;
   $("bulkCard").hidden = !manage;
   $("calCard").hidden = !manage;
@@ -125,8 +124,8 @@ function render(){
   const trained = people.filter(p => p.trained).length;
   $("tally").textContent = people.length ? `${people.length} on the roster, ${trained} with ${TRAIN.label.toLowerCase()}.` : "";
   $("people").innerHTML = people.length ? people.map(p => manage
-    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).length ? `<small>${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).join(", ")}</small>` : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.lead ? "checked" : ""} onchange="setFlag('${esc(p.id)}','lead',this.checked)"> club lead</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New link</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span></div>`
-    : `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : p.lead ? "<small>club leader</small>" : ""}</span>${many() ? `<span class="small muted">${(p.sections || []).map(sectionName).join(", ") || "no club"}</span>` : ""}</div>`
+    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New link</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span></div>`
+    : `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : ""}</span>${many() ? `<span class="small muted">${(p.sections || []).map(sectionName).join(", ") || "no club"}</span>` : ""}</div>`
   ).join("") : `<div class="empty">Nobody yet.</div>`;
   if (manage && many()) $("newSecs").innerHTML = chips([], null);
 }
@@ -223,8 +222,8 @@ async function guarded(fn){ try { await fn(); } catch (e) { const m = e.message;
 const pickedSections = () => many() ? [...$("newSecs").querySelectorAll("input:checked")].map(i => i.dataset.key) : defaultSections();
 const addPerson = () => guarded(async () => {
   const name = $("newName").value.trim(); if (!name) return;
-  const r = await api("POST", "?a=person", { name, sections: pickedSections(), trained: $("newTrained").checked, lead: $("newLead").checked, secretary: $("newSecretary").checked });
-  $("newName").value = ""; $("newTrained").checked = false; $("newLead").checked = false; $("newSecretary").checked = false;
+  const r = await api("POST", "?a=person", { name, sections: pickedSections(), trained: $("newTrained").checked, secretary: $("newSecretary").checked });
+  $("newName").value = ""; $("newTrained").checked = false; $("newSecretary").checked = false;
   await load(); showCode(r.person.name, r.code);
 });
 // "Mary Ryan *" means Mary holds the training. Leading bullets and numbering

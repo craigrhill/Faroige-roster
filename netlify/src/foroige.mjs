@@ -12,23 +12,20 @@
 // numbers are per club and any of them can be overridden on a single night
 // or event. The page shows the shortfall; the numbers live here.
 //
-// Three roles, held as flags on a person. The field names match the sibling
-// Scouts rota so the two stay diffable; the words shown to people differ:
-//   secretary  the club coordinator. Keeps the roster and the calendar: what
-//              is on, when, whether it is called off, and how many leaders it
-//              needs. On roster.html.
-//   lead       the club leader. Puts anyone on a night, and is not held to
-//              the numbers. On rota.html. The coordinator can do the same:
-//              the rota is where either of them overrides what self service
-//              has produced.
-//   (neither)  a leader: puts themselves on a night while there is a place
-//              for them. First come, first served.
-// While no coordinator exists yet, club leaders hold the coordinator's powers
-// so nobody is locked out.
+// Two kinds of person. The flag is still called secretary, the same field as
+// in the sibling Scouts rota so the two stay diffable; the word shown is
+// coordinator:
+//   secretary  the coordinator. Keeps the roster and the calendar, sets the
+//              numbers, and on the rota puts anyone on a night or takes them
+//              off, without being held to those numbers. There is one of her.
+//   (neither)  a volunteer. Puts themselves on a night while there is a place
+//              for them, first come first served, and takes themselves off.
+// The roster always keeps at least one coordinator, and the admin password
+// makes another if the only one is ever lost.
 //
 // Keys in the store:
 //   secret          HMAC key, generated on first use, never leaves the server
-//   roster          { people: [{ id, name, sections, trained, lead, secretary, codeHash }] }
+//   roster          { people: [{ id, name, sections, trained, secretary, codeHash }] }
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
 //                                 details, need, needTrained, off }] }
 //                   The club's own calendar, kept by the coordinator. kind is
@@ -56,9 +53,9 @@
 //   POST   ?a=slot     {section,id,add?,remove?}                 { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
 //                                                            { section }   coordinator
-//   POST   ?a=person   {name,sections,trained,lead,secretary}  { person, code }   coordinator
-//   POST   ?a=people   {people:[{name,sections,trained,lead}]} { added, skipped }  coordinator
-//   POST   ?a=person-update {id,name?,sections?,trained?,lead?,secretary?}  { person }
+//   POST   ?a=person   {name,sections,trained,secretary}       { person, code }   coordinator
+//   POST   ?a=people   {people:[{name,sections,trained}]}      { added, skipped }  coordinator
+//   POST   ?a=person-update {id,name?,sections?,trained?,secretary?}       { person }
 //   POST   ?a=person-remove {id,sections}                     { people }
 //   POST   ?a=recode   {id}                                   { code }
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -154,7 +151,7 @@ const sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DE
 // Which default a night takes, the club night one or the events one, is read
 // off the "m:" or "e:" on its id. That is the pages' job: the numbers are
 // advisory and nothing here refuses a tick for going over them.
-const pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
+const pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, secretary: !!p.secretary });
 const isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 const isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 const cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
@@ -166,7 +163,7 @@ const optNum = (v) => (v === null || v === undefined || v === "") ? null : num(v
 async function body(req) { try { const b = await req.json(); return b && typeof b === "object" ? b : null; } catch { return null; } }
 function makePerson(b, sec, code) {
   return { id: randomBytes(4).toString("hex"), name: cleanName(b.name), sections: cleanSections(b.sections),
-    trained: !!b.trained, lead: !!b.lead, secretary: !!b.secretary, codeHash: codeHash(sec, code),
+    trained: !!b.trained, secretary: !!b.secretary, codeHash: codeHash(sec, code),
     createdAt: new Date().toISOString() };
 }
 
@@ -211,8 +208,8 @@ export function createHandler(storeFactory) {
         await update(store, "roster", rosterFallback, (doc) => {
           person = doc.people.find((p) => p.name.toLowerCase() === name.toLowerCase());
           const sections = cleanSections(b && b.sections);
-          if (person) { person.lead = true; person.secretary = true; person.codeHash = codeHash(sec, code); if (sections.length) person.sections = [...new Set([...(person.sections || []), ...sections])]; }
-          else { person = makePerson({ name, sections, lead: true, secretary: true }, sec, code); doc.people.push(person); }
+          if (person) { person.secretary = true; person.codeHash = codeHash(sec, code); if (sections.length) person.sections = [...new Set([...(person.sections || []), ...sections])]; }
+          else { person = makePerson({ name, sections, secretary: true }, sec, code); doc.people.push(person); }
           return doc;
         });
         return json(200, { person: pub(person), code });
@@ -231,8 +228,7 @@ export function createHandler(storeFactory) {
       const roster = await readDoc(store, "roster", rosterFallback);
       const me = roster.doc.people.find((p) => p.id === t.id);
       if (!me) return fail(401, "Please sign in.");
-      const hasSecretary = roster.doc.people.some((p) => p.secretary);
-      const canManage = !!me.secretary || (!hasSecretary && !!me.lead);
+      const canManage = !!me.secretary;
 
       if (req.method === "GET") {
         const keys = (url.searchParams.get("sections") || "").split(",").map((s) => s.trim()).filter(isKey);
@@ -243,10 +239,10 @@ export function createHandler(storeFactory) {
             requiredTrainedEvents: doc.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
             slots: doc.slots, updatedAt: doc.updatedAt || null };
         }
-        // Club leaders and the coordinator see everyone. Others see the people
-        // who share a club with them, which is all coverage needs.
+        // The coordinator sees everyone. A volunteer sees the people who share
+        // a club with them, which is all coverage needs.
         const mine = new Set(me.sections || []);
-        const visible = (me.lead || canManage) ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
+        const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
         return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
@@ -262,16 +258,16 @@ export function createHandler(storeFactory) {
         // A night's numbers, and whether it is on at all, belong to the night
         // itself: they are set on the calendar and are not taken here.
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        // The rota is where the club leader and the coordinator override what
-        // self service has left them with.
-        const boss = me.lead || canManage;
+        // The rota is where the coordinator overrides what self service has
+        // left her with.
+        const boss = canManage;
         if (!boss && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
         // A night fills up and then closes: that is what makes it first come,
         // first served. Two things stop it deadlocking. A place is held for
         // someone trained while the night still needs one, so the last seat
         // cannot be taken by somebody who does not answer the rule; and if a
         // night somehow ends up full without one, a trained leader can still
-        // get on it. A club leader is not held to any of this.
+        // get on it. The coordinator is not held to any of this.
         const cal = await readDoc(store, "calendar", calendarFallback);
         const entry = (cal.doc.entries || []).find((e) => b.id === e.kind + ":" + e.id) || {};
         const trainedIds = new Set(roster.doc.people.filter((p) => p.trained).map((p) => p.id));
@@ -288,7 +284,7 @@ export function createHandler(storeFactory) {
             if (!ok) {
               refused = held > 0 && on < need
                 ? "That night is full apart from a place held for someone with the training."
-                : "That night is full. Ask the club leader if you need to be on it.";
+                : "That night is full. Ask the coordinator if you need to be on it.";
               return false;
             }
           }
@@ -424,7 +420,6 @@ export function createHandler(storeFactory) {
             if ("name" in b) { const n = cleanName(b.name); if (n) person.name = n; }
             if ("sections" in b) person.sections = cleanSections(b.sections);
             if ("trained" in b) person.trained = !!b.trained;
-            if ("lead" in b) person.lead = !!b.lead;
             if ("secretary" in b) person.secretary = !!b.secretary;
             return d;
           });
