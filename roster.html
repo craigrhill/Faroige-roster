@@ -54,10 +54,17 @@
         <input type="text" id="newName" placeholder="Name" autocomplete="off">
         <div class="secs" id="newSecs" hidden></div>
         <label class="small"><input type="checkbox" id="newTrained"> Holds <span data-training-label>the training</span></label>
-        <label class="small"><input type="checkbox" id="newLead"> Club leader: sets the numbers needed and can tick anyone in</label>
+        <label class="small"><input type="checkbox" id="newLead"> Club leader: can put anyone on a night and call off a week</label>
         <label class="small"><input type="checkbox" id="newSecretary"> Coordinator: can change this roster</label>
         <div><button class="btn" onclick="addPerson()">Add and get a code</button></div>
       </div>
+    </div>
+
+    <div class="card" id="numsCard" hidden>
+      <h2>How many are needed</h2>
+      <div id="nums"></div>
+      <p class="small muted" style="margin:.6rem 0 0" id="numsNote"></p>
+      <p class="msg" id="numsMsg"></p>
     </div>
 
     <div class="card" id="calCard" hidden>
@@ -105,12 +112,13 @@ function render(){
   const me = D.me, manage = canManage();
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
   $("intro").textContent = manage
-    ? "Everyone who can be on the rota. Tick who holds the training: the rota will not count a night as covered without one of them on it."
+    ? "Everyone who can be on the rota. Tick who holds the training: the rota will not count a club night as covered without one of them on it."
     : "Only the club coordinator can change the roster. This is the list as it stands.";
   $("addForm").hidden = !manage;
   $("bulkCard").hidden = !manage;
   $("calCard").hidden = !manage;
-  if (manage) renderCal();
+  $("numsCard").hidden = !manage;
+  if (manage) { renderNums(); renderCal(); }
   $("newSecs").hidden = !many();
   const people = (D.people || []).slice().sort(byName);
   const trained = people.filter(p => p.trained).length;
@@ -131,9 +139,14 @@ function fromConfig(){
   (C.events || []).forEach(e => out.push({ kind: "e", date: e.date, endDate: e.endDate || "", title: e.title || "Event", location: e.location || "", details: e.details || "" }));
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
-const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "" }));
+function def(e){
+  const n = D.sections[keys()[0]] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0 };
+  return { need: n.required, needTrained: e.kind === "e" ? n.requiredTrainedEvents : n.requiredTrained };
+}
+const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "", need: e.need ?? null, needTrained: e.needTrained ?? null }));
+const keys = () => C.settings.sections.map(x => x.key);
 async function load(){
-  showErr(""); D = await api("GET", "?sections=");
+  showErr(""); D = await api("GET", "?sections=" + keys().join(","));
   if (!calDirty) CAL = calFromServer().length || (D.calendar && D.calendar.updatedAt) ? calFromServer() : fromConfig();
   $("gate").hidden = true; $("app").hidden = false; render();
 }
@@ -144,8 +157,32 @@ function addEntry(kind){
   calDirty = true; renderCal(); 
   const last = $("calList").lastElementChild; if (last) last.querySelector("input[type=text]").focus();
 }
-function setEntry(i, field, v){ CAL[i][field] = v; calDirty = true; $("calSave").textContent = "Save the calendar"; $("calMsg").textContent = ""; }
+const usualText = e => e.need == null && e.needTrained == null ? "as usual" : "just this one";
+function setEntry(i, field, v){
+  if (field === "need" || field === "needTrained") v = v === "" ? null : Number(v);
+  CAL[i][field] = v; calDirty = true;
+  // Re-rendering the whole list on every keystroke would take the focus with
+  // it, so this one hint is updated in place.
+  const tag = document.querySelector(`[data-usual="${i}"]`);
+  if (tag) tag.textContent = usualText(CAL[i]); $("calSave").textContent = "Save the calendar"; $("calMsg").textContent = ""; }
 function removeEntry(i){ if (!confirm("Take " + (CAL[i].title || "this night") + " off the calendar? Anyone already down for it loses their place on it.")) return; CAL.splice(i, 1); calDirty = true; renderCal(); }
+function renderNums(){
+  const one = C.settings.sections.length === 1;
+  $("nums").innerHTML = C.settings.sections.map(x => {
+    const n = D.sections[x.key] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0 };
+    return `${one ? "" : `<h3 class="small" style="margin:.6rem 0 .3rem">${esc(x.name)}</h3>`}
+      <div class="needs"><label class="need"><span>Leaders on every club night and event</span><input type="number" min="1" max="9" value="${n.required}" onchange="setNums('${esc(x.key)}','required',this.value)"></label></div>
+      <div class="needs"><label class="need"><span>How many of them hold <span data-training-label>the training</span>, on a club night</span><input type="number" min="0" max="9" value="${n.requiredTrained}" onchange="setNums('${esc(x.key)}','requiredTrained',this.value)"></label></div>
+      <div class="needs"><label class="need"><span>and at an event</span><input type="number" min="0" max="9" value="${n.requiredTrainedEvents}" onchange="setNums('${esc(x.key)}','requiredTrainedEvents',this.value)"></label></div>`;
+  }).join("");
+  $("numsNote").textContent = "This is what every night asks for. A single night that is different is set against it on the calendar below.";
+}
+const setNums = (key, field, v) => guarded(async () => {
+  $("numsMsg").textContent = ""; $("numsMsg").className = "msg";
+  const r = await api("POST", "?a=required", { section: key, [field]: Number(v) });
+  D.sections[key] = { ...D.sections[key], ...r.section };
+  $("numsMsg").textContent = "Saved."; renderNums(); renderCal();
+});
 function renderCal(){
   const taken = !!(D.calendar && D.calendar.updatedAt);
   $("calNote").textContent = taken
@@ -164,6 +201,11 @@ function renderCal(){
       ${e.kind === "e" ? `<label class="pick"><span>to</span><input type="date" value="${esc(e.endDate || "")}" oninput="setEntry(${i},'endDate',this.value)" aria-label="Last day"></label>` : ""}
     </div>
     <input type="text" value="${esc(e.details || "")}" placeholder="A line about it, shown on the rota" oninput="setEntry(${i},'details',this.value)" aria-label="Description">
+    <div class="entry-row small muted">
+      <label class="pick"><span>Leaders</span><input type="number" min="1" max="9" value="${e.need ?? ""}" placeholder="${def(e).need}" oninput="setEntry(${i},'need',this.value)" aria-label="Leaders needed"></label>
+      <label class="pick"><span>of them with ${esc(TRAIN.short)}</span><input type="number" min="0" max="9" value="${e.needTrained ?? ""}" placeholder="${def(e).needTrained}" oninput="setEntry(${i},'needTrained',this.value)" aria-label="Trained leaders needed"></label>
+      <span data-usual="${i}">${usualText(e)}</span>
+    </div>
   </div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
 }
 const saveCal = () => guarded(async () => {

@@ -29,11 +29,20 @@ from the building and do not need one.
 
 So a person carries a `trained` flag, and a club carries three numbers:
 `required`, `requiredTrained` for club nights and `requiredTrainedEvents` for
-events, defaulting to 3, 1 and 0. A single night or event can override any of
-them. Which default applies is read off the slot id, `m:` for a club night
-and `e:` for an event, in `defaultTrained()`; that is also why an override is
-only collapsed against its own kind's default. A club night with the numbers
-but nobody trained reads as a warning, not as covered.
+events, defaulting to 3, 1 and 0. A single night can say otherwise with
+`need` and `needTrained` on its own calendar entry. A club night with the
+numbers but nobody trained reads as a warning, not as covered.
+
+**All of those numbers are the coordinator's**, set on `roster.html`: the
+club's three on the numbers card, a single night's on its calendar row, where
+that night is created and edited. `?a=slot` refuses `need` and `needTrained`
+from anyone, club leader included, and `?a=required` is behind the same
+coordinator gate as the roster and the calendar. The rota page has no
+settings on it at all: it states what a night needs and shows the gap.
+
+Which default a night takes is read off the `m:` or `e:` on its slot id, and
+that is now only done in `rota.html` (`needOf`, `needTOf`). The numbers are
+advisory: the function never refuses a tick for going over them.
 
 ## Layout
 
@@ -51,9 +60,10 @@ but nobody trained reads as a warning, not as covered.
 
 The coordinator keeps it on the roster page and it lives in the store under
 `calendar`, as `entries: [{ id, kind, date, endDate?, title, location,
-details }]`. `kind` is `m` for a club night and `e` for an event, and that is
-what decides whether the training rule applies. `details` is the line shown
-on the rota under the heading.
+details, need?, needTrained? }]`. `kind` is `m` for a club night and `e` for
+an event, and that is what decides whether the training rule applies.
+`details` is the line shown on the rota under the heading. `need` and
+`needTrained` are absent unless this one night differs from the club.
 
 Until anything is saved there, both pages fall back to `rota-config.json`:
 its `dates` (a list) or `day` (a weekday, which fills eight weeks) for club
@@ -113,6 +123,9 @@ this up?" with the admin password. The API is documented at the top of
   under the Fetch spec, and every CORS preflight becomes a 502.
 * **This repo is public.** No names, no codes, no passwords, ever. The lists
   go into the store through the roster page, not into Git.
+* **Blank is not nought.** `Number(null)` and `Number("")` are both 0, so a
+  number field left empty read as "needs nobody" rather than "as the club
+  does". `optNum()` keeps blank blank; a typed 0 is still a real answer.
 * **An editor held in the page must track `input`, not `change`.** The
   calendar rows did `onchange` at first, so the field someone was typing in
   had not reached the local copy when they clicked Save. Its value was

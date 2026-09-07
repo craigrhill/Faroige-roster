@@ -896,8 +896,6 @@ var MAX_ENTRIES = 200;
 var isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
 var clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 var sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
-var isEventSlot = (id) => String(id).startsWith("e:");
-var defaultTrained = (d, slotId) => isEventSlot(slotId) ? d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS : d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED;
 var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
 var isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 var isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
@@ -907,6 +905,7 @@ var num = (v) => {
   const n = Math.round(Number(v));
   return Number.isFinite(n) ? n : NaN;
 };
+var optNum = (v) => v === null || v === void 0 || v === "" ? null : num(v);
 async function body(req) {
   try {
     const b = await req.json();
@@ -1003,35 +1002,21 @@ function createHandler(storeFactory) {
         const known = new Set(roster.doc.people.map((p) => p.id));
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
+        if ("need" in b || "needTrained" in b) return fail(403, "The numbers for a night are set on the calendar, by the coordinator.");
         if (!me.lead) {
-          if ("off" in b || "need" in b || "needTrained" in b) return fail(403, "Only the club leader can change that.");
+          if ("off" in b) return fail(403, "Only the club leader can change that.");
           if ([...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
         }
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [], off: false };
           s.who = [.../* @__PURE__ */ new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
           if ("off" in b) s.off = !!b.off;
-          if ("need" in b) {
-            const n = num(b.need);
-            if (n >= 1 && n <= 9 && n !== d.required) s.need = n;
-            else delete s.need;
-          }
-          if ("needTrained" in b) {
-            const n = num(b.needTrained);
-            if (n >= 0 && n <= 9 && n !== defaultTrained(d, b.id)) s.needTrained = n;
-            else delete s.needTrained;
-          }
-          const need = s.need ?? d.required, defT = defaultTrained(d, b.id);
-          if ((s.needTrained ?? defT) > need) {
-            if (need === defT) delete s.needTrained;
-            else s.needTrained = need;
-          }
           return d;
         });
         return json(200, { section: doc });
       }
+      if (!canManage) return fail(403, "Only the club coordinator can change that.");
       if (a === "required") {
-        if (!me.lead) return fail(403, "Only the club leader can change that.");
         if (!isKey(b.section)) return fail(400, "Bad club.");
         const wantN = "required" in b ? num(b.required) : null;
         const wantT = "requiredTrained" in b ? num(b.requiredTrained) : null;
@@ -1051,15 +1036,10 @@ function createHandler(storeFactory) {
           d.required = required;
           d.requiredTrained = requiredTrained;
           d.requiredTrainedEvents = requiredTrainedEvents;
-          for (const [id, s] of Object.entries(d.slots)) {
-            if (s.need === required) delete s.need;
-            if (s.needTrained === defaultTrained(d, id)) delete s.needTrained;
-          }
           return d;
         });
         return json(200, { section: doc });
       }
-      if (!canManage) return fail(403, "Only the club coordinator can change the roster.");
       if (a === "calendar") {
         const rows = Array.isArray(b.entries) ? b.entries : null;
         if (!rows) return fail(400, "No calendar given.");
@@ -1081,6 +1061,10 @@ function createHandler(storeFactory) {
             details: clip(row.details, 300)
           };
           if (endDate) entry.endDate = endDate;
+          const need = optNum(row.need), needTrained = optNum(row.needTrained);
+          if (need != null && need >= 1 && need <= 9) entry.need = need;
+          if (needTrained != null && needTrained >= 0 && needTrained <= 9) entry.needTrained = needTrained;
+          if (entry.need != null && entry.needTrained > entry.need) entry.needTrained = entry.need;
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

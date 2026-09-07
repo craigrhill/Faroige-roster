@@ -11,9 +11,11 @@ training from the ETB.** A club night with three untrained leaders on it is
 not counted as covered. Events are away from the building, so they need the
 three leaders and nobody in particular.
 
-All three numbers are settings, and any of them can be changed on a single
-club night or event: a night that needs four, or an event that does need
-somebody approved after all.
+All three numbers are the coordinator's, on the roster page. A single night
+that is different is set on its own calendar row, where that night is created
+and edited: a night that needs four, or an event that does need somebody
+approved after all. Leave those boxes blank and the night asks for whatever
+the club asks for.
 
 ## The two pages
 
@@ -29,10 +31,10 @@ somebody approved after all.
 Three roles. They are flags on a person and the function enforces them, not
 the pages:
 
-* **coordinator** keeps the roster. Adds people, marks who is approved,
-  issues codes. There is always at least one.
-* **club leader** sets how many leaders a night needs and how many of them
-  must be approved, ticks anyone in, marks a week as no club.
+* **coordinator** keeps the roster and the calendar, and sets how many
+  leaders are needed: for the club, and for any single night. Adds people,
+  marks who is approved, issues codes. There is always at least one.
+* **club leader** puts anyone on a night and marks a week as no club.
 * **anyone else** sees the rota and ticks only themselves.
 
 A code (`XXXX-XXXX`) signs a phone in for 365 days. It is shown once. Taking
@@ -73,9 +75,10 @@ off every night with it. "New code" cancels the old one.
 ## The calendar, once it is running
 
 The coordinator keeps it on the roster page, under Calendar. Each night has
-a kind (club night or event), a date, a name, somewhere to be, and a line of
-description that shows on the rota under the heading. Events also take a last
-day, for anything running more than one.
+a kind (club night or event), a date, a name, somewhere to be, a line of
+description that shows on the rota under the heading, and how many leaders it
+needs if that is not the usual number. Events also take a last day, for
+anything running more than one.
 
 The first time the page is opened the calendar is filled in from
 `rota-config.json`, ready to save. Saving takes it over: from then on the

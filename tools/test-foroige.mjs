@@ -72,14 +72,16 @@ const night = "m:2030-01-02";
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [helperId] } });
 ok("a leader ticks themselves", [r.status, r.j.section.slots[night].who], [200, [helperId]]);
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [coordId] } }); ok("a leader cannot tick someone else", r.status, 403);
-r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, need: 4 } });         ok("a leader cannot change the numbers needed", r.status, 403);
-r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, needTrained: 0 } });  ok("nor the trained number", r.status, 403);
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, need: 4 } });
+ok("a night's numbers are not taken here at all, not even from a leader", [r.status, r.j.error], [403, "The numbers for a night are set on the calendar, by the coordinator."]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, needTrained: 0 } });
+ok("nor from the coordinator, who sets them on the calendar", r.status, 403);
 r = await call("POST", "?a=person", { token: helper, body: { name: "X" } });                                 ok("nor add people", r.status, 403);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, add: [coordId, bulkTrainedId] } });
 ok("the club leader ticks two more in", r.j.section.slots[night].who.length, 3);
 
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 2 } });
-ok("the club leader raises the trained number", [r.status, r.j.section.requiredTrained], [200, 2]);
+ok("the coordinator raises the trained number", [r.status, r.j.section.requiredTrained], [200, 2]);
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 4 } });
 ok("more trained leaders than leaders is refused", [r.status, r.j.error], [400, "You cannot need more trained leaders than leaders."]);
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 0 } });   ok("zero leaders is refused", r.status, 400);
@@ -89,28 +91,37 @@ r = await call("POST", "?a=required", { token: coord, body: { section: "club", r
 ok("needing nobody trained is allowed, for a club with no rule", [r.status, r.j.section.requiredTrained, r.j.section.required], [200, 0, 3]);
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 1 } });
 ok("and back to one, leaving the leaders number alone", [r.j.section.required, r.j.section.requiredTrained], [3, 1]);
-r = await call("POST", "?a=required", { token: helper, body: { section: "club", required: 2 } }); ok("a plain leader cannot set the numbers", r.status, 403);
+r = await call("POST", "?a=required", { token: helper, body: { section: "club", required: 2 } });
+ok("a plain leader cannot set the club's numbers", [r.status, r.j.error], [403, "Only the club coordinator can change that."]);
 
-// Per night overrides.
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 5, needTrained: 2 } });
-ok("one night can need more than the club default", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained], [5, 2]);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3 } });
-ok("setting a night back to the club default drops the override", "need" in r.j.section.slots[night], false);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 1 } });
-// Clamped down to 1, which is the club default, so the override is dropped
-// rather than stored: the effective number is what matters.
-ok("dropping a night to one leader clamps its trained number down too", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained ?? r.j.section.requiredTrained], [1, 1]);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3, needTrained: 1 } });
-ok("and clearing both overrides leaves the night on the club default", ["need" in r.j.section.slots[night], "needTrained" in r.j.section.slots[night]], [false, false]);
-r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 4, requiredTrained: 2 } });
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 1 } });
-ok("clamping below the club default stores the lower trained number", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained], [1, 1]);
-r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 1 } });
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3, needTrained: 1 } });
+// A single night that is different: set on its calendar entry, not here.
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
+  { kind: "m", date: "2030-01-02", title: "Busy night", need: 5, needTrained: 2 },
+  { kind: "m", date: "2030-01-09", title: "Ordinary night" },
+  { kind: "e", date: "2030-02-01", title: "Halloween disco", needTrained: 1 }
+] } });
+ok("a night can be given its own numbers where it is edited", [r.status, r.j.calendar.entries[0].need, r.j.calendar.entries[0].needTrained], [200, 5, 2]);
+ok("a night left alone carries no numbers, so it takes the club's", ["need" in r.j.calendar.entries[1], "needTrained" in r.j.calendar.entries[1]], [false, false]);
+ok("an event can be told it does need one after all", r.j.calendar.entries[2].needTrained, 1);
+const busy = r.j.calendar.entries[0];
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, need: 1, needTrained: 3 }] } });
+ok("asking for more trained than leaders on one night clamps down", [r.j.calendar.entries[0].need, r.j.calendar.entries[0].needTrained], [1, 1]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, need: 0, needTrained: 99 }] } });
+ok("numbers out of range are dropped, so the night falls back to the club's", ["need" in r.j.calendar.entries[0], "needTrained" in r.j.calendar.entries[0]], [false, false]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, need: null, needTrained: null }] } });
+ok("blank means the same thing, and is not read as the number nought", ["need" in r.j.calendar.entries[0], "needTrained" in r.j.calendar.entries[0]], [false, false]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, need: "", needTrained: "" }] } });
+ok("an empty box is blank too", ["need" in r.j.calendar.entries[0], "needTrained" in r.j.calendar.entries[0]], [false, false]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ ...busy, needTrained: 0 }] } });
+ok("but nought typed in is a real answer: this one needs nobody trained", r.j.calendar.entries[0].needTrained, 0);
+r = await call("POST", "?a=calendar", { token: helper, body: { entries: [] } });
+ok("a plain leader cannot set a night's numbers either", r.status, 403);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
+ok("the calendar clears again for the tests that follow", r.j.calendar.entries, []);
 
 const event = "e:2030-02-01:Halloween disco";
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: event, add: [trainedId], needTrained: 2 } });
-ok("an event takes ticks and its own trained number", [r.status, r.j.section.slots[event].who, r.j.section.slots[event].needTrained], [200, [trainedId], 2]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: event, add: [trainedId] } });
+ok("an event takes ticks", [r.status, r.j.section.slots[event].who], [200, [trainedId]]);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: "m:2030-01-09", off: true } });
 ok("the club leader marks a week as no club", r.j.section.slots["m:2030-01-09"].off, true);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: event, add: ["nope"] } }); ok("unknown person id is 400", r.status, 400);
@@ -131,30 +142,20 @@ r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: n
 ok("a conflicting write is retried and lands", [failed, r.status, r.j.section.slots[night].who.includes(coordId)], [1, 200, false]);
 store.set = realSet;
 
-// The training rule is about the building, so it follows the kind of night.
+// The training rule is about the building, so the club keeps two numbers: one
+// for a club night in it and one for an event away from it.
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 1, requiredTrainedEvents: 0 } });
 ok("the three numbers are set together", [r.j.section.required, r.j.section.requiredTrained, r.j.section.requiredTrainedEvents], [3, 1, 0]);
-const trip = "e:2030-03-01:Day trip";
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: trip, needTrained: 0 } });
-ok("an event set to nobody trained stores no override, since that is its default", "needTrained" in (r.j.section.slots[trip] || {}), false);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: trip, needTrained: 1 } });
-ok("an event that does need a trained leader stores the override", r.j.section.slots[trip].needTrained, 1);
-const night2 = "m:2030-03-06";
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night2, needTrained: 1 } });
-ok("a club night set to one trained stores no override, since that is its default", "needTrained" in (r.j.section.slots[night2] || {}), false);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night2, needTrained: 0 } });
-ok("a club night let off the rule stores the override", r.j.section.slots[night2].needTrained, 0);
-r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 1 } });
-ok("raising the events default collapses the event override that now matches it", "needTrained" in r.j.section.slots[trip], false);
-ok("and leaves the club night override alone, it belongs to the other kind", r.j.section.slots[night2].needTrained, 0);
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 4 } });
 ok("more trained at an event than leaders is refused", [r.status, r.j.error], [400, "You cannot need more trained leaders than leaders."]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 1 } });
+ok("events can be told they need one, for a club that meets in its own building", r.j.section.requiredTrainedEvents, 1);
 r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 0 } });
 ok("and back to nobody trained at an event", r.j.section.requiredTrainedEvents, 0);
 
 // The calendar the coordinator keeps.
 r = await call("GET", "?sections=club", { token: coord });
-ok("the calendar starts empty, so the pages fall back to the setup file", [r.j.calendar.entries, r.j.calendar.updatedAt], [[], null]);
+ok("an empty calendar is what makes the pages fall back to the setup file", r.j.calendar.entries, []);
 r = await call("POST", "?a=calendar", { token: helper, body: { entries: [] } });
 ok("a plain leader cannot change the calendar", r.status, 403);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
@@ -171,8 +172,8 @@ const cal = r.j.calendar.entries, night3 = "m:" + cal[0].id, calTrip = "e:" + ca
 ok("club nights and events keep their kind", [cal[0].kind, cal[2].kind], ["m", "e"]);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night3, add: [coordId] } });
 ok("an entry's id works as a slot id", [r.status, r.j.section.slots[night3].who], [200, [coordId]]);
-r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: calTrip, needTrained: 1 } });
-ok("and an event's id does too, with its own trained number", r.j.section.slots[calTrip].needTrained, 1);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: calTrip, add: [trainedId] } });
+ok("and an event's id does too", r.j.section.slots[calTrip].who, [trainedId]);
 // Renaming and moving a night must not lose the people already down for it.
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
   { ...cal[0], date: "2030-04-04", title: "Club night, later start" }, cal[1], cal[2]

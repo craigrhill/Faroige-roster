@@ -14,10 +14,12 @@
 //
 // Three roles, held as flags on a person. The field names match the sibling
 // Scouts rota so the two stay diffable; the words shown to people differ:
-//   secretary  the club coordinator. Keeps the roster: who is on it, who is
-//              trained, codes. On roster.html.
-//   lead       the club leader. Sets the numbers needed, ticks anyone, marks
-//              a week as no club. On rota.html.
+//   secretary  the club coordinator. Keeps the roster and the calendar, and
+//              sets how many leaders every night needs and how many of them
+//              must be trained, for the club and for any one night. On
+//              roster.html.
+//   lead       the club leader. Puts anyone on a night and marks a week as
+//              no club. On rota.html.
 //   (neither)  a leader: sees the rota and ticks only themselves.
 // While no coordinator exists yet, club leaders hold the coordinator's powers
 // so nobody is locked out.
@@ -25,13 +27,16 @@
 // Keys in the store:
 //   secret          HMAC key, generated on first use, never leaves the server
 //   roster          { people: [{ id, name, sections, trained, lead, secretary, codeHash }] }
-//   calendar        { entries: [{ id, kind, date, endDate, title, location, details }] }
+//   calendar        { entries: [{ id, kind, date, endDate, title, location,
+//                                 details, need, needTrained }] }
 //                   The club's own calendar, kept by the coordinator. kind is
 //                   "m" for a club night and "e" for an event; that is what
 //                   decides whether the training rule applies. While this is
 //                   empty the pages fall back to rota-config.json.
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
-//                     slots: { <slotId>: { who: [personId], off, need, needTrained } } }
+//                     slots: { <slotId>: { who: [personId], off } } }
+//                   What a single night needs is not here: it is on that
+//                   night's calendar entry, set where the night is edited.
 //
 // Slot ids are made by the page: "m:YYYY-MM-DD" for a club night,
 // "e:YYYY-MM-DD:Title" for an event. The server stores ticks against whatever
@@ -45,9 +50,9 @@
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
 //   POST   ?a=login                        {code}   { token, me }
-//   POST   ?a=slot     {section,id,add?,remove?,off?,need?,needTrained?}  { section }
+//   POST   ?a=slot     {section,id,add?,remove?,off?}            { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
-//                                                            { section }   club leader
+//                                                            { section }   coordinator
 //   POST   ?a=person   {name,sections,trained,lead,secretary}  { person, code }   coordinator
 //   POST   ?a=people   {people:[{name,sections,trained,lead}]} { added, skipped }  coordinator
 //   POST   ?a=person-update {id,name?,sections?,trained?,lead?,secretary?}  { person }
@@ -143,19 +148,18 @@ const MAX_ENTRIES = 200;
 const isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
 const clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 const sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
-// Slot ids say which kind a night is: "m:" a club night in the building,
-// "e:" an event. They carry different training defaults, so every read of the
-// default goes through here.
-const isEventSlot = (id) => String(id).startsWith("e:");
-const defaultTrained = (d, slotId) => isEventSlot(slotId)
-  ? (d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS)
-  : (d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
+// Which default a night takes, the club night one or the events one, is read
+// off the "m:" or "e:" on its id. That is the pages' job: the numbers are
+// advisory and nothing here refuses a tick for going over them.
 const pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, lead: !!p.lead, secretary: !!p.secretary });
 const isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 const isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 const cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
 const cleanSections = (a) => Array.isArray(a) ? [...new Set(a.filter(isKey))] : [];
 const num = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? n : NaN; };
+// Blank has to stay blank. Number(null) and Number("") are both 0, so a field
+// left empty would otherwise read as the number nought.
+const optNum = (v) => (v === null || v === undefined || v === "") ? null : num(v);
 async function body(req) { try { const b = await req.json(); return b && typeof b === "object" ? b : null; } catch { return null; } }
 function makePerson(b, sec, code) {
   return { id: randomBytes(4).toString("hex"), name: cleanName(b.name), sections: cleanSections(b.sections),
@@ -230,27 +234,27 @@ export function createHandler(storeFactory) {
         const known = new Set(roster.doc.people.map((p) => p.id));
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
+        // What a night needs is part of the night, set on the calendar by the
+        // coordinator, so it is not taken here from anyone.
+        if ("need" in b || "needTrained" in b) return fail(403, "The numbers for a night are set on the calendar, by the coordinator.");
         if (!me.lead) {
-          if ("off" in b || "need" in b || "needTrained" in b) return fail(403, "Only the club leader can change that.");
+          if ("off" in b) return fail(403, "Only the club leader can change that.");
           if ([...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
         }
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [], off: false };
           s.who = [...new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
           if ("off" in b) s.off = !!b.off;
-          if ("need" in b) { const n = num(b.need); if (n >= 1 && n <= 9 && n !== d.required) s.need = n; else delete s.need; }
-          if ("needTrained" in b) { const n = num(b.needTrained); if (n >= 0 && n <= 9 && n !== defaultTrained(d, b.id)) s.needTrained = n; else delete s.needTrained; }
-          // Never ask for more trained leaders than leaders on the same night:
-          // the leaders number wins, the trained number is clamped down to it.
-          const need = s.need ?? d.required, defT = defaultTrained(d, b.id);
-          if ((s.needTrained ?? defT) > need) { if (need === defT) delete s.needTrained; else s.needTrained = need; }
           return d;
         });
         return json(200, { section: doc });
       }
 
+      // From here on it is the coordinator's: the numbers, the roster and the
+      // calendar are all theirs.
+      if (!canManage) return fail(403, "Only the club coordinator can change that.");
+
       if (a === "required") {
-        if (!me.lead) return fail(403, "Only the club leader can change that.");
         if (!isKey(b.section)) return fail(400, "Bad club.");
         // Validate before the read-modify-write, so a bad number is a 400 and
         // not a throw out of the retry loop.
@@ -270,18 +274,10 @@ export function createHandler(storeFactory) {
           const requiredTrainedEvents = wantE ?? (d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS);
           if (requiredTrained > required || requiredTrainedEvents > required) return false;
           d.required = required; d.requiredTrained = requiredTrained; d.requiredTrainedEvents = requiredTrainedEvents;
-          // A per-night override that now matches its own kind's default is
-          // no longer an override, so it stops showing as changed.
-          for (const [id, s] of Object.entries(d.slots)) {
-            if (s.need === required) delete s.need;
-            if (s.needTrained === defaultTrained(d, id)) delete s.needTrained;
-          }
           return d;
         });
         return json(200, { section: doc });
       }
-      if (!canManage) return fail(403, "Only the club coordinator can change the roster.");
-
       // The whole calendar is written at once. It is a short list, the page
       // holds it while it is being edited, and one write keeps the etag guard
       // meaningful: two coordinators editing at the same moment conflict and
@@ -301,6 +297,12 @@ export function createHandler(storeFactory) {
           const entry = { id: /^[a-f0-9]{8,32}$/.test(row.id || "") ? row.id : randomBytes(6).toString("hex"),
             kind, date: row.date, title, location: clip(row.location, 80), details: clip(row.details, 300) };
           if (endDate) entry.endDate = endDate;
+          // Blank means whatever the club asks for. A number here is this one
+          // night saying otherwise.
+          const need = optNum(row.need), needTrained = optNum(row.needTrained);
+          if (need != null && need >= 1 && need <= 9) entry.need = need;
+          if (needTrained != null && needTrained >= 0 && needTrained <= 9) entry.needTrained = needTrained;
+          if (entry.need != null && entry.needTrained > entry.need) entry.needTrained = entry.need;
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

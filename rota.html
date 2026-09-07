@@ -37,14 +37,6 @@
     <p class="muted">The club nights and events coming up. Put yourself down for the ones you can do. A club night is only covered when it has enough leaders <em>and</em> one of them holds <span data-training-label>the training</span>. Events are away from the building, so they just need the leaders.</p>
     <div class="chips" id="chips" hidden></div>
 
-    <div class="card">
-      <h2>How many are needed</h2>
-      <div class="needs"><label class="need"><span>Leaders on every club night and event</span><input type="number" id="req" min="1" max="9"></label></div>
-      <div class="needs"><label class="need"><span>How many of them hold <span data-training-label>the training</span>, on a club night</span><input type="number" id="reqT" min="0" max="9"></label></div>
-      <div class="needs"><label class="need"><span>and at an event</span><input type="number" id="reqE" min="0" max="9"></label></div>
-      <p class="small muted" style="margin:.6rem 0 0" id="reqNote"></p>
-    </div>
-
     <div class="card"><h2>Gaps</h2><div class="gaps" id="gaps"></div></div>
     <div class="card"><h2>Upcoming</h2><div id="slots"></div></div>
 
@@ -98,11 +90,14 @@ function upcoming(k){
 }
 const personById = id => (D.people || []).find(p => p.id === id);
 const slotOf = (k, id) => (D.sections[k] && D.sections[k].slots[id]) || { who: [], off: false };
-const needOf = (k, id) => { const s = slotOf(k, id); return s.need > 0 ? s.need : D.sections[k].required; };
-// An event is away from the building, so it carries its own default, which is
-// normally nobody. Either can still be set on one night or one event.
-const needTOf = (k, id) => { const s = slotOf(k, id); return Number.isFinite(s.needTrained) ? s.needTrained
-  : id.startsWith("e:") ? D.sections[k].requiredTrainedEvents : D.sections[k].requiredTrained; };
+// What a night needs is set by the coordinator where the night itself is
+// edited, so it rides on the calendar entry. Blank there means the club's own
+// number, and an event's default is normally nobody, being away from the
+// building.
+const entryOf = id => ((D.calendar && D.calendar.entries) || []).find(e => id === e.kind + ":" + e.id) || {};
+const needOf = (k, id) => { const e = entryOf(id); return e.need > 0 ? e.need : D.sections[k].required; };
+const needTOf = (k, id) => { const e = entryOf(id), def = id.startsWith("e:") ? D.sections[k].requiredTrainedEvents : D.sections[k].requiredTrained;
+  return Math.min(Number.isFinite(e.needTrained) ? e.needTrained : def, needOf(k, id)); };
 const trainedIn = (k, id) => slotOf(k, id).who.filter(pid => { const p = personById(pid); return p && p.trained; }).length;
 // One night's state: how many are on it, how many of those are trained, and
 // which of the two rules it falls short of.
@@ -124,11 +119,6 @@ function render(){
   const many = C.settings.sections.length > 1;
   $("chips").hidden = !many;
   if (many) $("chips").innerHTML = C.settings.sections.map(x => `<button class="chip ${x.key === k ? "on" : ""}" onclick="pick('${esc(x.key)}')">${esc(x.name)}</button>`).join("");
-  for (const [id, v] of [["req", sect.required], ["reqT", sect.requiredTrained], ["reqE", sect.requiredTrainedEvents]]) { $(id).value = v; $(id).disabled = !lead; }
-  $("reqNote").textContent = (sect.requiredTrainedEvents ? "" : `Events are away from the building, so they do not need anyone with ${TRAIN.label.toLowerCase()}. `)
-    + (lead ? "Change the numbers on a single club night or event below if one of them is different."
-            : "Set by the club leader.");
-
   // With several clubs a person covers the ones the coordinator ticked. With
   // one club there is nothing to tick, so everyone on the roster covers it.
   const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byTrainedThenName);
@@ -144,7 +134,7 @@ function render(){
 
   $("slots").innerHTML = slots.map(x => {
     const st = state(k, x.id), s = st.s;
-    const custom = s.need > 0 || Number.isFinite(s.needTrained);
+    const custom = entryOf(x.id).need > 0 || Number.isFinite(entryOf(x.id).needTrained);
     const status = s.off ? `<span class="status off">No club</span>`
       : st.ok ? `<span class="status ok">Covered</span>`
       : st.shortPeople ? `<span class="status gap">${st.n} of ${st.need}</span>`
@@ -171,11 +161,7 @@ function render(){
         ${listed.length ? controls : ""}
       </div>`}
       <div class="slot-foot">
-        ${s.off ? "" : lead
-          ? `<label class="need">Leaders <input type="number" min="1" max="9" value="${st.need}" onchange="setNeed('${esc(k)}','${esc(x.id)}',this.value)"></label>
-             <label class="need">trained <input type="number" min="0" max="9" value="${st.needT}" onchange="setNeedT('${esc(k)}','${esc(x.id)}',this.value)"></label>
-             ${custom ? `<span class="custom">changed</span>` : ""}`
-          : `<span>${st.need} leader${st.need === 1 ? "" : "s"} needed${st.needT ? `, ${st.needT} with ${esc(TRAIN.short)}` : ""}${custom ? " (set for this one)" : ""}</span>`}
+        ${s.off ? "" : `<span>${st.need} leader${st.need === 1 ? "" : "s"} needed${st.needT ? `, ${st.needT} with ${esc(TRAIN.short)}` : ""}</span>${custom ? `<span class="custom">set for this one</span>` : ""}`}
         ${st.n && !s.off && st.needT ? `<span>${st.t} trained on it</span>` : ""}
         ${x.kind === "meeting" && lead ? `<label><input type="checkbox" ${s.off ? "checked" : ""} onchange="setOff('${esc(k)}','${esc(x.id)}',this.checked)"> No club this week</label>` : ""}
       </div>
@@ -194,12 +180,7 @@ async function guarded(fn){ try { await fn(); } catch (e) { showErr(e.message); 
 function pick(k){ try { localStorage.setItem(SK, k); } catch {} render(); }
 function putSection(k, doc){ D.sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained, requiredTrainedEvents: doc.requiredTrainedEvents, slots: doc.slots, updatedAt: doc.updatedAt }; render(); }
 const tick = (k, id, pid, on) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, [on ? "add" : "remove"]: [pid] })).section));
-const setNeed = (k, id, v) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, need: Number(v) })).section));
-const setNeedT = (k, id, v) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, needTrained: Number(v) })).section));
 const setOff = (k, id, off) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, off })).section));
-const setRequired = () => guarded(async () => putSection(sec(), (await api("POST", "?a=required", { section: sec(),
-  required: Number($("req").value), requiredTrained: Number($("reqT").value), requiredTrainedEvents: Number($("reqE").value) })).section));
-for (const id of ["req", "reqT", "reqE"]) $(id).addEventListener("change", setRequired);
 function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){
