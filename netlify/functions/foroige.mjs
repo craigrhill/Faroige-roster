@@ -1002,15 +1002,11 @@ function createHandler(storeFactory) {
         const known = new Set(roster.doc.people.map((p) => p.id));
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
-        if ("need" in b || "needTrained" in b) return fail(403, "The numbers for a night are set on the calendar, by the coordinator.");
-        if (!me.lead) {
-          if ("off" in b) return fail(403, "Only the club leader can change that.");
-          if ([...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
-        }
+        if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
+        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
-          const s = d.slots[b.id] = d.slots[b.id] || { who: [], off: false };
+          const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
           s.who = [.../* @__PURE__ */ new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
-          if ("off" in b) s.off = !!b.off;
           return d;
         });
         return json(200, { section: doc });
@@ -1065,6 +1061,7 @@ function createHandler(storeFactory) {
           if (need != null && need >= 1 && need <= 9) entry.need = need;
           if (needTrained != null && needTrained >= 0 && needTrained <= 9) entry.needTrained = needTrained;
           if (entry.need != null && entry.needTrained > entry.need) entry.needTrained = entry.need;
+          if (row.off) entry.off = true;
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

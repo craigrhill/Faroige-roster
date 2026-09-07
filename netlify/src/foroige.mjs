@@ -14,12 +14,10 @@
 //
 // Three roles, held as flags on a person. The field names match the sibling
 // Scouts rota so the two stay diffable; the words shown to people differ:
-//   secretary  the club coordinator. Keeps the roster and the calendar, and
-//              sets how many leaders every night needs and how many of them
-//              must be trained, for the club and for any one night. On
-//              roster.html.
-//   lead       the club leader. Puts anyone on a night and marks a week as
-//              no club. On rota.html.
+//   secretary  the club coordinator. Keeps the roster and the calendar: what
+//              is on, when, whether it is called off, and how many leaders it
+//              needs. On roster.html.
+//   lead       the club leader. Puts anyone on a night. On rota.html.
 //   (neither)  a leader: sees the rota and ticks only themselves.
 // While no coordinator exists yet, club leaders hold the coordinator's powers
 // so nobody is locked out.
@@ -28,15 +26,16 @@
 //   secret          HMAC key, generated on first use, never leaves the server
 //   roster          { people: [{ id, name, sections, trained, lead, secretary, codeHash }] }
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
-//                                 details, need, needTrained }] }
+//                                 details, need, needTrained, off }] }
 //                   The club's own calendar, kept by the coordinator. kind is
 //                   "m" for a club night and "e" for an event; that is what
 //                   decides whether the training rule applies. While this is
 //                   empty the pages fall back to rota-config.json.
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
-//                     slots: { <slotId>: { who: [personId], off } } }
-//                   What a single night needs is not here: it is on that
-//                   night's calendar entry, set where the night is edited.
+//                     slots: { <slotId>: { who: [personId] } } }
+//                   Only who is on a night lives here. What it needs, and
+//                   whether it is on at all, are on its calendar entry, set
+//                   where the night itself is edited.
 //
 // Slot ids are made by the page: "m:YYYY-MM-DD" for a club night,
 // "e:YYYY-MM-DD:Title" for an event. The server stores ticks against whatever
@@ -50,7 +49,7 @@
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
 //   POST   ?a=login                        {code}   { token, me }
-//   POST   ?a=slot     {section,id,add?,remove?,off?}            { section }
+//   POST   ?a=slot     {section,id,add?,remove?}                 { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
 //                                                            { section }   coordinator
 //   POST   ?a=person   {name,sections,trained,lead,secretary}  { person, code }   coordinator
@@ -234,17 +233,13 @@ export function createHandler(storeFactory) {
         const known = new Set(roster.doc.people.map((p) => p.id));
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
-        // What a night needs is part of the night, set on the calendar by the
-        // coordinator, so it is not taken here from anyone.
-        if ("need" in b || "needTrained" in b) return fail(403, "The numbers for a night are set on the calendar, by the coordinator.");
-        if (!me.lead) {
-          if ("off" in b) return fail(403, "Only the club leader can change that.");
-          if ([...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
-        }
+        // A night's numbers, and whether it is on at all, belong to the night
+        // itself: they are set on the calendar and are not taken here.
+        if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
+        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
-          const s = d.slots[b.id] = d.slots[b.id] || { who: [], off: false };
+          const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
           s.who = [...new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
-          if ("off" in b) s.off = !!b.off;
           return d;
         });
         return json(200, { section: doc });
@@ -303,6 +298,9 @@ export function createHandler(storeFactory) {
           if (need != null && need >= 1 && need <= 9) entry.need = need;
           if (needTrained != null && needTrained >= 0 && needTrained <= 9) entry.needTrained = needTrained;
           if (entry.need != null && entry.needTrained > entry.need) entry.needTrained = entry.need;
+          // Called off, but kept: deleting it would take everyone already down
+          // for it with it, and next term it may well be back.
+          if (row.off) entry.off = true;
           entries.push(entry);
         }
         if (new Set(entries.map((e) => e.id)).size !== entries.length) return fail(400, "The same night was sent twice.");

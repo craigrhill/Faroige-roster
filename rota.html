@@ -39,12 +39,6 @@
 
     <div class="card"><h2>Gaps</h2><div class="gaps" id="gaps"></div></div>
     <div class="card"><h2>Upcoming</h2><div id="slots"></div></div>
-
-    <div class="card">
-      <h2 id="peopleTitle">Leaders</h2>
-      <p class="small muted" id="peopleNote"></p>
-      <div id="people"></div>
-    </div>
   </section>
 </main>
 <footer class="wrap">Nothing on this page is public. Codes are personal: do not share yours.</footer>
@@ -95,6 +89,8 @@ const slotOf = (k, id) => (D.sections[k] && D.sections[k].slots[id]) || { who: [
 // number, and an event's default is normally nobody, being away from the
 // building.
 const entryOf = id => ((D.calendar && D.calendar.entries) || []).find(e => id === e.kind + ":" + e.id) || {};
+// Whether a night is on is the coordinator's, kept with the night itself.
+const offOf = id => entryOf(id).off === true;
 const needOf = (k, id) => { const e = entryOf(id); return e.need > 0 ? e.need : D.sections[k].required; };
 const needTOf = (k, id) => { const e = entryOf(id), def = id.startsWith("e:") ? D.sections[k].requiredTrainedEvents : D.sections[k].requiredTrained;
   return Math.min(Number.isFinite(e.needTrained) ? e.needTrained : def, needOf(k, id)); };
@@ -122,7 +118,7 @@ function render(){
   // With several clubs a person covers the ones the coordinator ticked. With
   // one club there is nothing to tick, so everyone on the roster covers it.
   const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byTrainedThenName);
-  const live = slots.filter(x => !slotOf(k, x.id).off);
+  const live = slots.filter(x => !offOf(x.id));
   const bad = live.map(x => ({ x, st: state(k, x.id) })).filter(o => !o.st.ok);
   // Worth calling out separately: nights that have the leaders but nobody trained.
   const noTrained = bad.filter(o => o.st.shortTrained && !o.st.shortPeople).length;
@@ -135,7 +131,8 @@ function render(){
   $("slots").innerHTML = slots.map(x => {
     const st = state(k, x.id), s = st.s;
     const custom = entryOf(x.id).need > 0 || Number.isFinite(entryOf(x.id).needTrained);
-    const status = s.off ? `<span class="status off">No club</span>`
+    const off = offOf(x.id);
+    const status = off ? `<span class="status off">Called off</span>`
       : st.ok ? `<span class="status ok">Covered</span>`
       : st.shortPeople ? `<span class="status gap">${st.n} of ${st.need}</span>`
       : `<span class="status warn">No ${esc(TRAIN.short)}</span>`;
@@ -156,23 +153,17 @@ function render(){
     return `<div class="slot">
       <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
       ${x.details ? `<p class="detail">${esc(x.details)}</p>` : ""}
-      ${s.off ? "" : `<div class="who">
+      ${off ? "" : `<div class="who">
         <div class="onit">${chips || `<span class="empty">${listed.length ? "Nobody on it yet." : "Nobody on the roster for " + esc(sectionName(k)) + " yet."}</span>`}</div>
         ${listed.length ? controls : ""}
       </div>`}
       <div class="slot-foot">
-        ${s.off ? "" : `<span>${st.need} leader${st.need === 1 ? "" : "s"} needed${st.needT ? `, ${st.needT} with ${esc(TRAIN.short)}` : ""}</span>${custom ? `<span class="custom">set for this one</span>` : ""}`}
-        ${st.n && !s.off && st.needT ? `<span>${st.t} trained on it</span>` : ""}
-        ${x.kind === "meeting" && lead ? `<label><input type="checkbox" ${s.off ? "checked" : ""} onchange="setOff('${esc(k)}','${esc(x.id)}',this.checked)"> No club this week</label>` : ""}
+        ${off ? "" : `<span>${st.need} leader${st.need === 1 ? "" : "s"} needed${st.needT ? `, ${st.needT} with ${esc(TRAIN.short)}` : ""}</span>${custom ? `<span class="custom">set for this one</span>` : ""}`}
+        ${st.n && !off && st.needT ? `<span>${st.t} trained on it</span>` : ""}
       </div>
     </div>`;
   }).join("") || `<div class="empty">Nothing coming up.</div>`;
 
-  // The roster is the coordinator's. Here it is read-only: who can cover this club.
-  $("peopleTitle").textContent = many ? "Leaders for " + sectionName(k) : "Leaders";
-  $("peopleNote").textContent = `${names.filter(p => p.trained).length} of ${names.length} hold ${TRAIN.label.toLowerCase()}. `
-    + (lead ? "To add someone or change their training, ask the coordinator." : "Only a club leader can put someone else on a night.");
-  $("people").innerHTML = names.map(p => `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.lead ? "<small>club leader</small>" : ""}</span></div>`).join("") || `<div class="empty">Nobody on the roster yet.</div>`;
 }
 async function load(){ showErr(""); D = await api("GET", "?sections=" + keys().join(",")); $("gate").hidden = true; $("app").hidden = false; render(); }
 // On a rejected change, put the inputs back to what the server actually holds.
@@ -180,7 +171,6 @@ async function guarded(fn){ try { await fn(); } catch (e) { showErr(e.message); 
 function pick(k){ try { localStorage.setItem(SK, k); } catch {} render(); }
 function putSection(k, doc){ D.sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained, requiredTrainedEvents: doc.requiredTrainedEvents, slots: doc.slots, updatedAt: doc.updatedAt }; render(); }
 const tick = (k, id, pid, on) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, [on ? "add" : "remove"]: [pid] })).section));
-const setOff = (k, id, off) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, off })).section));
 function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){

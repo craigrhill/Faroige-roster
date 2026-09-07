@@ -31,11 +31,11 @@ the club asks for.
 Three roles. They are flags on a person and the function enforces them, not
 the pages:
 
-* **coordinator** keeps the roster and the calendar, and sets how many
-  leaders are needed: for the club, and for any single night. Adds people,
-  marks who is approved, issues codes. There is always at least one.
-* **club leader** puts anyone on a night and marks a week as no club.
-* **anyone else** sees the rota and ticks only themselves.
+* **coordinator** keeps the roster and the calendar: what is on, when,
+  whether it has been called off, and how many leaders it needs, for the club
+  and for any single night. Adds people, marks who is approved, issues codes.
+  There is always at least one.
+* **club leader** puts anyone on a night. Everyone else puts on themselves.
 
 A code (`XXXX-XXXX`) signs a phone in for 365 days. It is shown once. Taking
 someone off the roster revokes their sign-in at once, and takes their ticks
@@ -79,6 +79,9 @@ a kind (club night or event), a date, a name, somewhere to be, a line of
 description that shows on the rota under the heading, and how many leaders it
 needs if that is not the usual number. Events also take a last day, for
 anything running more than one.
+
+**Called off** greys a night out on the rota rather than removing it, so
+whoever was already down for it keeps their place if it comes back.
 
 The first time the page is opened the calendar is filled in from
 `rota-config.json`, ready to save. Saving takes it over: from then on the
@@ -130,7 +133,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 95 offline cases
+    npm run test:function     # 98 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

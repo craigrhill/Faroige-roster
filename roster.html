@@ -143,7 +143,7 @@ function def(e){
   const n = D.sections[keys()[0]] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0 };
   return { need: n.required, needTrained: e.kind === "e" ? n.requiredTrainedEvents : n.requiredTrained };
 }
-const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "", need: e.need ?? null, needTrained: e.needTrained ?? null }));
+const calFromServer = () => ((D.calendar && D.calendar.entries) || []).map(e => ({ ...e, endDate: e.endDate || "", need: e.need ?? null, needTrained: e.needTrained ?? null, off: !!e.off }));
 const keys = () => C.settings.sections.map(x => x.key);
 async function load(){
   showErr(""); D = await api("GET", "?sections=" + keys().join(","));
@@ -186,7 +186,7 @@ const setNums = (key, field, v) => guarded(async () => {
 function renderCal(){
   const taken = !!(D.calendar && D.calendar.updatedAt);
   $("calNote").textContent = taken
-    ? "The club nights and events on the rota. Changing a date or a name keeps everyone already down for that night."
+    ? "The club nights and events on the rota. Changing a date or a name keeps everyone already down for that night. Called off leaves it on the rota greyed out, rather than losing who was on it."
     : "These are coming from the site's setup file. Save the calendar to take it over, and it can be edited here from then on.";
   $("calSave").textContent = calDirty || !taken ? "Save the calendar" : "Saved";
   $("calList").innerHTML = CAL.map((e, i) => `<div class="entry">
@@ -205,6 +205,7 @@ function renderCal(){
       <label class="pick"><span>Leaders</span><input type="number" min="1" max="9" value="${e.need ?? ""}" placeholder="${def(e).need}" oninput="setEntry(${i},'need',this.value)" aria-label="Leaders needed"></label>
       <label class="pick"><span>of them with ${esc(TRAIN.short)}</span><input type="number" min="0" max="9" value="${e.needTrained ?? ""}" placeholder="${def(e).needTrained}" oninput="setEntry(${i},'needTrained',this.value)" aria-label="Trained leaders needed"></label>
       <span data-usual="${i}">${usualText(e)}</span>
+      <label class="pick" style="margin-left:auto"><input type="checkbox" ${e.off ? "checked" : ""} onchange="setEntry(${i},'off',this.checked)"><span>Called off</span></label>
     </div>
   </div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
 }

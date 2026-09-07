@@ -35,10 +35,12 @@ numbers but nobody trained reads as a warning, not as covered.
 
 **All of those numbers are the coordinator's**, set on `roster.html`: the
 club's three on the numbers card, a single night's on its calendar row, where
-that night is created and edited. `?a=slot` refuses `need` and `needTrained`
-from anyone, club leader included, and `?a=required` is behind the same
+that night is created and edited. Whether a night is on at all is there too.
+`?a=slot` takes only `add` and `remove`, refusing `need`, `needTrained` and
+`off` from anyone, club leader included; `?a=required` is behind the same
 coordinator gate as the roster and the calendar. The rota page has no
-settings on it at all: it states what a night needs and shows the gap.
+settings on it at all: it states what a night needs and shows the gap. Its
+only controls are the two pull-downs, or one button for a plain leader.
 
 Which default a night takes is read off the `m:` or `e:` on its slot id, and
 that is now only done in `rota.html` (`needOf`, `needTOf`). The numbers are
@@ -46,24 +48,26 @@ advisory: the function never refuses a tick for going over them.
 
 ## Layout
 
-    rota.html               coverage, everyone
+    rota.html               coverage, everyone. No settings: see above
     roster.html             the coordinator's page, including bulk add
     rota-lib.js             shared sign-in, API calls, config loading
     rota.css                shared styles
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 95 cases
+    tools/test-foroige.mjs  offline harness, 98 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
 
 The coordinator keeps it on the roster page and it lives in the store under
 `calendar`, as `entries: [{ id, kind, date, endDate?, title, location,
-details, need?, needTrained? }]`. `kind` is `m` for a club night and `e` for
+details, need?, needTrained?, off? }]`. `kind` is `m` for a club night and `e` for
 an event, and that is what decides whether the training rule applies.
 `details` is the line shown on the rota under the heading. `need` and
-`needTrained` are absent unless this one night differs from the club.
+`needTrained` are absent unless this one night differs from the club. `off`
+marks a night called off: it stays on the rota, greyed out, because deleting
+it would take everyone already down for it too.
 
 Until anything is saved there, both pages fall back to `rota-config.json`:
 its `dates` (a list) or `day` (a weekday, which fills eight weeks) for club
