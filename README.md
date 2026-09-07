@@ -122,7 +122,8 @@ remove its ticks, and the page says so before it does.
    answers 503 and says so.
 
 3. **First run.** Open `roster.html`, expand "First time setting this up?",
-   enter a name and that password. That creates the coordinator and shows
+   enter the coordinator's name and that password. Five wrong tries shuts
+   setup for fifteen minutes, so a guessed password is not a quick way in. That creates the coordinator and shows
    their code. Everything after that happens on the roster page and the
    password is not needed again.
 
@@ -163,7 +164,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 124 offline cases
+    npm run test:function     # 129 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

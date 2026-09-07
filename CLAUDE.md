@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 124 cases
+    tools/test-foroige.mjs  offline harness, 129 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -180,6 +180,13 @@ this up?" with the admin password. The API is documented at the top of
   Netlify, scoped to Functions. A Builds-only scope is invisible to the
   function and looks identical to not setting it. Unset means first-time
   setup returns 503 saying so, which is the safe way round for a public repo.
+  Never put the password, or a hash of it, in this repo: it is public, and a
+  hash of anything short is the password.
+* **First-time setup is throttled.** Five wrong passwords and it answers 429
+  for fifteen minutes, counted in the store under `admin-tries` so it holds
+  across function instances. It is the only door a password opens, so it is
+  the only one worth guessing at; the throttle is what makes a short password
+  defensible rather than a matter of minutes.
 * **Every write is guarded by the document's etag** and retried on conflict,
   so two people saving at once do not overwrite each other. Keep that: it is
   why the function reads with strong consistency and writes with

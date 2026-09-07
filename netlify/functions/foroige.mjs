@@ -815,6 +815,8 @@ var DEFAULT_REQUIRED = 3;
 var DEFAULT_REQUIRED_TRAINED = 1;
 var DEFAULT_REQUIRED_TRAINED_EVENTS = 0;
 var MAX_BULK = 100;
+var ADMIN_TRIES = 5;
+var ADMIN_LOCK_MINUTES = 15;
 var headers = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -965,7 +967,22 @@ function createHandler(storeFactory) {
       }
       if (req.method === "POST" && a === "bootstrap") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
-        if (!adminOk(req)) return fail(401, "Wrong password.");
+        const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0 }));
+        const waitMs = (guard.doc.until || 0) - Date.now();
+        if (waitMs > 0) return fail(429, `Too many wrong tries. Setup is shut for another ${Math.ceil(waitMs / 6e4)} minute${Math.ceil(waitMs / 6e4) === 1 ? "" : "s"}.`);
+        if (!adminOk(req)) {
+          await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => {
+            d.fails = (d.fails || 0) + 1;
+            if (d.fails >= ADMIN_TRIES) {
+              d.until = Date.now() + ADMIN_LOCK_MINUTES * 6e4;
+              d.fails = 0;
+            }
+            return d;
+          });
+          await new Promise((r) => setTimeout(r, 250));
+          return fail(401, "Wrong password.");
+        }
+        await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => d.fails || d.until ? { fails: 0, until: 0 } : false);
         const b2 = await body(req);
         const name = cleanName(b2 && b2.name);
         if (!name) return fail(400, "A name is needed.");

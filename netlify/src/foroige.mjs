@@ -25,6 +25,7 @@
 //
 // Keys in the store:
 //   secret          HMAC key, generated on first use, never leaves the server
+//   admin-tries     wrong tries at first-time setup, and when it reopens
 //   roster          { people: [{ id, name, sections, trained, secretary, codeHash }] }
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
 //                                 details, need, needTrained, off }] }
@@ -49,6 +50,7 @@
 //   GET    ?a=public&section=k   (no token)         { required, ..., entries }
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
+//                        five wrong tries shuts it for fifteen minutes
 //   POST   ?a=login                        {code}   { token, me }
 //   POST   ?a=slot     {section,id,add?,remove?}                 { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
@@ -67,6 +69,10 @@ const DEFAULT_REQUIRED = 3;        // leaders on every club night and event
 const DEFAULT_REQUIRED_TRAINED = 1; // of whom this many must hold the training
 const DEFAULT_REQUIRED_TRAINED_EVENTS = 0; // but not at an event, away from the building
 const MAX_BULK = 100;              // names accepted in one paste
+// First-time setup is the one door a password opens, so it is the one worth
+// guessing at. Five wrong tries and it shuts for a quarter of an hour, which
+// turns even a four digit password from minutes of guessing into weeks of it.
+const ADMIN_TRIES = 5, ADMIN_LOCK_MINUTES = 15;
 const headers = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -201,7 +207,19 @@ export function createHandler(storeFactory) {
       // Unauthenticated entry points.
       if (req.method === "POST" && a === "bootstrap") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
-        if (!adminOk(req)) return fail(401, "Wrong password.");
+        const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0 }));
+        const waitMs = (guard.doc.until || 0) - Date.now();
+        if (waitMs > 0) return fail(429, `Too many wrong tries. Setup is shut for another ${Math.ceil(waitMs / 60000)} minute${Math.ceil(waitMs / 60000) === 1 ? "" : "s"}.`);
+        if (!adminOk(req)) {
+          await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => {
+            d.fails = (d.fails || 0) + 1;
+            if (d.fails >= ADMIN_TRIES) { d.until = Date.now() + ADMIN_LOCK_MINUTES * 60000; d.fails = 0; }
+            return d;
+          });
+          await new Promise((r) => setTimeout(r, 250));
+          return fail(401, "Wrong password.");
+        }
+        await update(store, "admin-tries", () => ({ fails: 0, until: 0 }), (d) => (d.fails || d.until ? { fails: 0, until: 0 } : false));
         const b = await body(req); const name = cleanName(b && b.name);
         if (!name) return fail(400, "A name is needed.");
         const code = newCode(); let person;

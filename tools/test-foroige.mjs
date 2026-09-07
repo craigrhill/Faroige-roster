@@ -26,8 +26,20 @@ process.env.ADMIN_PASSWORD = "admin-for-test";
 r = await call("OPTIONS", "");                              ok("OPTIONS is 204", r.status, 204);
 r = await call("GET", "?sections=club");                    ok("GET without token is 401", r.status, 401);
 r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } }); ok("bootstrap with wrong password is 401", r.status, 401);
+// Five wrong tries and setup shuts, so a short password is not worth guessing.
+for (let i = 0; i < 3; i++) await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+ok("the fifth wrong try is the last one allowed", r.status, 401);
+r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+ok("after that setup is shut, and says for how long", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
+r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord" } });
+ok("and the right password is turned away too while it is shut", r.status, 429);
+{ const g = JSON.parse(store._map.get("admin-tries").value); g.until = Date.now() - 1; store._map.set("admin-tries", { value: JSON.stringify(g), etag: "expired" }); }
+r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } });
+ok("once the wait is over it opens again", r.status, 401);
 r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
 ok("bootstrap creates the coordinator, in the club", [r.status, r.j.person.secretary, r.j.person.sections], [200, true, ["club"]]);
+ok("and a good password wipes the count of wrong ones", JSON.parse(store._map.get("admin-tries").value).fails, 0);
 ok("and there is no club leader flag on anyone any more", "lead" in r.j.person, false);
 ok("the first coordinator is not assumed to be trained", r.j.person.trained, false);
 const coordCode = r.j.code; ok("code has the expected shape", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(coordCode), true);
