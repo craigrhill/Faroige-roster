@@ -37,9 +37,22 @@ the pages:
   There is always at least one.
 * **club leader** puts anyone on a night. Everyone else puts on themselves.
 
-A code (`XXXX-XXXX`) signs a phone in for 365 days. It is shown once. Taking
-someone off the roster revokes their sign-in at once, and takes their ticks
-off every night with it. "New code" cancels the old one.
+**Nobody has to type anything.** Each person gets their own link, shown once
+on the roster page and sent to them however suits. Opening it signs that
+phone in for 365 days and the code is taken straight back out of the address
+bar. Taking someone off the roster revokes their sign-in at once, and takes
+them off every night with it. "New link" cancels the old one.
+
+A link is as good as a code: whoever holds it is that person, so it is worth
+sending each one to that person rather than to a group.
+
+**Nights are first come, first served.** Anyone can put themselves on a
+night while there is a place. Once it has the leaders it needs, it closes.
+Two exceptions keep it from jamming: while a night still needs somebody with
+the training, that place is held and an untrained person cannot take it; and
+somebody with the training can get on a night that is already full but has
+nobody trained on it. A club leader is held to none of this and can put
+whoever they like on.
 
 ## Setting it up
 
@@ -133,7 +146,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 98 offline cases
+    npm run test:function     # 109 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

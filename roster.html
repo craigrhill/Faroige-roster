@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
 <title>Roster: Foroige club coordinator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,7 +20,7 @@
 
   <section id="gate" hidden>
     <h1>Sign in</h1>
-    <p class="muted">The roster is kept by the club coordinator. Enter your code.</p>
+    <p class="muted">The roster is kept by the club coordinator. Open your link, or enter the code from it.</p>
     <div class="card">
       <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
       <p class="msg" id="gateMsg"></p>
@@ -56,7 +57,7 @@
         <label class="small"><input type="checkbox" id="newTrained"> Holds <span data-training-label>the training</span></label>
         <label class="small"><input type="checkbox" id="newLead"> Club leader: can put anyone on a night and call off a week</label>
         <label class="small"><input type="checkbox" id="newSecretary"> Coordinator: can change this roster</label>
-        <div><button class="btn" onclick="addPerson()">Add and get a code</button></div>
+        <div><button class="btn" onclick="addPerson()">Add and get a link</button></div>
       </div>
     </div>
 
@@ -81,7 +82,7 @@
 
     <details class="card" id="bulkCard" hidden>
       <summary>Add a list of names at once</summary>
-      <p class="small muted" style="margin-top:.6rem">One name per line. Put a <b>*</b> at the end of a line for anyone who holds <span data-training-label>the training</span>. Names already on the roster are left alone. Every new person gets a code, all shown together below, once.</p>
+      <p class="small muted" style="margin-top:.6rem">One name per line. Put a <b>*</b> at the end of a line for anyone who holds <span data-training-label>the training</span>. Names already on the roster are left alone. Every new person gets a link to send them, all shown together below, once.</p>
       <div class="add">
         <textarea id="bulkText" placeholder="Mary Ryan *&#10;Sean Daly&#10;Aoife Burke *" spellcheck="false"></textarea>
         <div class="row"><button class="btn" onclick="addMany()">Add them</button><span class="small muted" id="bulkCount"></span></div>
@@ -124,7 +125,7 @@ function render(){
   const trained = people.filter(p => p.trained).length;
   $("tally").textContent = people.length ? `${people.length} on the roster, ${trained} with ${TRAIN.label.toLowerCase()}.` : "";
   $("people").innerHTML = people.length ? people.map(p => manage
-    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).length ? `<small>${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).join(", ")}</small>` : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.lead ? "checked" : ""} onchange="setFlag('${esc(p.id)}','lead',this.checked)"> club lead</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New code</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span></div>`
+    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).length ? `<small>${[p.secretary && "coordinator", p.lead && "club leader"].filter(Boolean).join(", ")}</small>` : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.lead ? "checked" : ""} onchange="setFlag('${esc(p.id)}','lead',this.checked)"> club lead</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New link</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span></div>`
     : `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : p.lead ? "<small>club leader</small>" : ""}</span>${many() ? `<span class="small muted">${(p.sections || []).map(sectionName).join(", ") || "no club"}</span>` : ""}</div>`
   ).join("") : `<div class="empty">Nobody yet.</div>`;
   if (manage && many()) $("newSecs").innerHTML = chips([], null);
@@ -244,14 +245,14 @@ const addMany = () => guarded(async () => {
   const r = await api("POST", "?a=people", { people: rows.map(x => ({ ...x, sections })) });
   $("bulkText").value = ""; $("bulkCount").textContent = "";
   $("bulkOut").innerHTML = `<div class="banner"><b>${r.added.length} added.</b>${r.skipped.length ? ` Already on the roster, left alone: ${esc(r.skipped.join(", "))}.` : ""}
-    ${r.added.length ? `<div class="codes" id="codeList">${r.added.map(a => `<div><span>${esc(a.person.name)}${a.person.trained ? " (" + esc(TRAIN.short) + ")" : ""}</span><b>${esc(a.code)}</b></div>`).join("")}</div>
-    <p class="small" style="margin:.6rem 0 0">Send each person their own code. They are shown only once. <button class="btn" onclick="copyList()">Copy the list</button></p>` : ""}</div>`;
+    ${r.added.length ? `<div class="codes" id="codeList">${r.added.map(a => `<div><span>${esc(a.person.name)}${a.person.trained ? " (" + esc(TRAIN.short) + ")" : ""}</span><b>${esc(codeLink(a.code))}</b></div>`).join("")}</div>
+    <p class="small" style="margin:.6rem 0 0">Send each person their own link. They are shown only once, and nobody has to type anything. <button class="btn" onclick="copyList()">Copy the list</button></p>` : ""}</div>`;
   await load();
 });
 async function copyList(){ try { await navigator.clipboard.writeText([...$("codeList").children].map(d => d.children[0].textContent + ": " + d.children[1].textContent).join("\n")); } catch {} }
 const setSections = (id, key, on) => guarded(async () => { const p = personById(id); const sections = on ? [...new Set([...(p.sections || []), key])] : (p.sections || []).filter(x => x !== key); await api("POST", "?a=person-update", { id, sections }); await load(); });
 const setFlag = (id, flag, on) => guarded(async () => { await api("POST", "?a=person-update", { id, [flag]: on }); await load(); });
-const recode = (id) => guarded(async () => { const p = personById(id); if (!confirm("Give " + p.name + " a new code? Their old code will stop working.")) return; const r = await api("POST", "?a=recode", { id }); showCode(p.name, r.code); });
+const recode = (id) => guarded(async () => { const p = personById(id); if (!confirm("Give " + p.name + " a new link? Their old one will stop working and they will be signed out.")) return; const r = await api("POST", "?a=recode", { id }); showCode(p.name, r.code); });
 const removePerson = (id) => guarded(async () => { const p = personById(id); if (!confirm("Remove " + p.name + " from the roster? Their ticks on every rota are removed too.")) return; await api("POST", "?a=person-remove", { id, sections: C.settings.sections.map(x => x.key) }); await load(); });
 async function bootstrap(){
   $("bootMsg").textContent = ""; $("bootMsg").className = "msg";
@@ -262,6 +263,9 @@ function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate
 onUnauthorized = signOut;
 async function boot(){
   C = await loadContent();
+  // A personal link wins over whoever this phone was signed in as before, so
+  // handing a phone round does the obvious thing.
+  if (await signInFromLink(load)) return;
   if (token) { try { await load(); return; } catch (e) { if (token) showErr(e.message); } }
   $("gate").hidden = false;
 }

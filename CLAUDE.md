@@ -55,7 +55,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 98 cases
+    tools/test-foroige.mjs  offline harness, 109 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -85,6 +85,35 @@ The whole calendar is written at once, by `?a=calendar`, rather than an
 action per entry. It is a short list, the page holds it while it is being
 edited, and one write keeps the etag guard meaningful: two coordinators
 editing together conflict and retry rather than interleaving halves.
+
+## Signing in, and first come first served
+
+**Nobody types a code.** A person's code is handed out as a link,
+`/rota?c=XXXX-XXXX`, built by `codeLink()`. `signInFromLink()` spends it on
+the first load, stores the token, and `dropCodeFromUrl()` takes it straight
+back out of the address bar with `history.replaceState`. A link beats the
+token already on the phone, so handing a phone round does the obvious thing.
+The code box on the gate still works for anyone who has only the code.
+
+Both pages carry `<meta name="referrer" content="no-referrer">`. Without it
+the Google Fonts request would carry the whole URL, code and all, in the
+Referer header.
+
+**A night fills up and then closes.** Anyone puts themselves on while there
+is a place; once there is not, the button is gone and `?a=slot` answers 409.
+Two things stop that deadlocking, and both matter:
+
+* While a night still wants somebody trained, that many places are **held**:
+  an untrained person can only take a place if `on < need - held`. Otherwise
+  three untrained people would fill a night that then could never be covered.
+* A trained person can get on **even when the night is already full**, if it
+  still has nobody trained. That is the escape hatch for a night that got
+  into that state anyway, by a club leader's hand or a change of numbers.
+
+A club leader is held to none of it and can go over the numbers. The rule is
+enforced in the function, inside the read-modify-write so two people racing
+for the last place cannot both win, and mirrored in `placeForMe()` on the
+page purely so the button knows what to say.
 
 ## Roles and the store
 
@@ -137,6 +166,8 @@ this up?" with the admin password. The API is documented at the top of
 * **`guarded()` on the roster page reloads before it reports.** `load()`
   clears the error banner on its way in, so showing the message first meant
   no failure was ever visible. Show it after the reload, not before.
+* **A capacity rule has to be enforced inside `update()`.** Checking before
+  the read-modify-write lets two people take the same last place.
 * **Playwright:** `text=Sign in` matches a heading before a button of the same
   name. Use `getByRole("button", { name: "Sign in", exact: true })`. Its
   `fill()` does not reliably fire `change` on the last field before a click,

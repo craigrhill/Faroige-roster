@@ -5,6 +5,15 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = s => new Date(s + "T12:00:00").toLocaleDateString("en-IE", { weekday: "short", day: "numeric", month: "short" });
 let token = null; try { token = localStorage.getItem(TK); } catch {}
+// A personal link carries the code in ?c=, so nobody has to type one. It is
+// spent on the first load and taken straight back out of the address bar, so
+// it is not left sitting in the tab for the next person to see.
+const linkCode = new URLSearchParams(location.search).get("c");
+function dropCodeFromUrl(){
+  try { const u = new URL(location.href); if (u.searchParams.has("c")) { u.searchParams.delete("c"); history.replaceState(null, "", u.pathname + u.search + u.hash); } } catch {}
+}
+// The link to send someone. Same code, nothing to remember.
+const codeLink = code => location.origin + location.pathname.replace(/roster(\.html)?$/, m => m.includes(".") ? "rota.html" : "rota") + "?c=" + encodeURIComponent(code);
 function setToken(t){ token = t; try { if (t) localStorage.setItem(TK, t); else localStorage.removeItem(TK); } catch {} }
 let onUnauthorized = () => {};
 
@@ -46,10 +55,16 @@ const byName = (a, b) => a.name.localeCompare(b.name, "en-IE");
 const byTrainedThenName = (a, b) => (!!b.trained - !!a.trained) || byName(a, b);
 
 function showCode(name, code){
-  $("codeBox").innerHTML = `<b>Code for ${esc(name)}</b><br><span class="code" id="codeText">${esc(code)}</span><br><span class="small">Send it to them now. It is shown only once; use New code if it is lost.</span> <button class="btn" onclick="copyCode()">Copy</button> <button class="btn quiet" onclick="$('codeBox').hidden=true">Close</button>`;
+  $("codeBox").innerHTML = `<b>Link for ${esc(name)}</b><br><span class="link" id="codeText">${esc(codeLink(code))}</span><br><span class="small">Send it to them now, and they will not have to type anything. It is shown only once; use New link if it is lost.</span> <button class="btn" onclick="copyCode()">Copy the link</button> <button class="btn quiet" onclick="$('codeBox').hidden=true">Close</button>`;
   $("codeBox").hidden = false; $("codeBox").scrollIntoView({ block: "center" });
 }
 async function copyCode(){ try { await navigator.clipboard.writeText($("codeText").textContent); } catch {} }
+// Sign in from the link, if there is one, before falling back to the gate.
+async function signInFromLink(after){
+  if (!linkCode) return false;
+  try { const r = await api("POST", "?a=login", { code: linkCode }); setToken(r.token); dropCodeFromUrl(); await after(); return true; }
+  catch { dropCodeFromUrl(); return false; }
+}
 async function signIn(code, msgId, after){
   $(msgId).textContent = ""; $(msgId).className = "msg";
   try { const r = await api("POST", "?a=login", { code }); setToken(r.token); await after(); }

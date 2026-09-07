@@ -71,7 +71,8 @@ r = await call("POST", "?a=people", { token: helper, body: { people: [{ name: "S
 const night = "m:2030-01-02";
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [helperId] } });
 ok("a leader ticks themselves", [r.status, r.j.section.slots[night].who], [200, [helperId]]);
-r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [coordId] } }); ok("a leader cannot tick someone else", r.status, 403);
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [coordId] } });
+ok("a leader cannot put someone else on", [r.status, r.j.error], [403, "You can only put yourself on a night."]);
 r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, need: 4 } });
 ok("a night's numbers are not taken here at all, not even from a leader", [r.status, r.j.error], [403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator."]);
 r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, needTrained: 0 } });
@@ -203,6 +204,46 @@ r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: 
 ok("an over-long description is cut, not refused", r.j.calendar.entries[0].details.length, 300);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: cal } });
 ok("and the calendar can be put back as it was", r.j.calendar.entries.map(e => e.id), cal.map(e => e.id));
+
+// First come, first served: a night fills up and then closes.
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-06-07", title: "Full night" }] } });
+const fullId = "m:" + r.j.calendar.entries[0].id;
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 1 } });
+// Two untrained on it, one place left, and that place is held for the training.
+r = await call("POST", "?a=person", { token: coord, body: { name: "Plain A", sections: ["club"] } }); const plainA = r.j.person.id, plainACode = r.j.code;
+r = await call("POST", "?a=person", { token: coord, body: { name: "Plain B", sections: ["club"] } }); const plainBCode = r.j.code;
+r = await call("POST", "?a=person", { token: coord, body: { name: "Plain C", sections: ["club"] } }); const plainCCode = r.j.code;
+r = await call("POST", "?a=person", { token: coord, body: { name: "Trained D", sections: ["club"], trained: true } }); const trainedDCode = r.j.code;
+const tok = async (code) => (await call("POST", "?a=login", { body: { code } })).j.token;
+const [tA, tB, tC, tD] = await Promise.all([tok(plainACode), tok(plainBCode), tok(plainCCode), tok(trainedDCode)]);
+r = await call("POST", "?a=slot", { token: tA, body: { section: "club", id: fullId, add: [plainA] } });
+ok("the first untrained leader gets on", r.j.section.slots[fullId].who.length, 1);
+r = await call("POST", "?a=slot", { token: tB, body: { section: "club", id: fullId, add: [(await call("GET", "?sections=club", { token: tB })).j.me.id] } });
+ok("and the second", r.j.section.slots[fullId].who.length, 2);
+const meC = (await call("GET", "?sections=club", { token: tC })).j.me.id;
+r = await call("POST", "?a=slot", { token: tC, body: { section: "club", id: fullId, add: [meC] } });
+ok("but the third untrained one is refused: the last place is held", [r.status, r.j.error], [409, "That night is full apart from a place held for someone with the training."]);
+const meD = (await call("GET", "?sections=club", { token: tD })).j.me.id;
+r = await call("POST", "?a=slot", { token: tD, body: { section: "club", id: fullId, add: [meD] } });
+ok("the trained one takes it", [r.status, r.j.section.slots[fullId].who.length], [200, 3]);
+r = await call("POST", "?a=slot", { token: tC, body: { section: "club", id: fullId, add: [meC] } });
+ok("now it is simply full", [r.status, r.j.error], [409, "That night is full. Ask the club leader if you need to be on it."]);
+r = await call("POST", "?a=slot", { token: tA, body: { section: "club", id: fullId, remove: [plainA] } });
+ok("anyone can still take themselves off a full night", r.j.section.slots[fullId].who.length, 2);
+r = await call("POST", "?a=slot", { token: tC, body: { section: "club", id: fullId, add: [meC] } });
+ok("which opens the place up again, first come first served", [r.status, r.j.section.slots[fullId].who.length], [200, 3]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: fullId, add: [coordId] } });
+ok("a club leader is not held to the numbers and can go over", r.j.section.slots[fullId].who.length, 4);
+// A night that has gone full with nobody trained must not deadlock.
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [{ kind: "m", date: "2030-06-14", title: "Stuck night" }] } });
+const stuck = "m:" + r.j.calendar.entries.find(e => e.title === "Stuck night").id;
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: stuck, add: [plainA, meC, coordId] } });
+ok("three untrained on it, put there by the club leader", r.j.section.slots[stuck].who.length, 3);
+r = await call("POST", "?a=slot", { token: tB, body: { section: "club", id: stuck, add: [(await call("GET", "?sections=club", { token: tB })).j.me.id] } });
+ok("another untrained one is refused", r.status, 409);
+r = await call("POST", "?a=slot", { token: tD, body: { section: "club", id: stuck, add: [meD] } });
+ok("but a trained one can still get on it, so it is never stuck", [r.status, r.j.section.slots[stuck].who.length], [200, 4]);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
 
 // Codes, roles and removal.
 r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); const newCode = r.j.code;

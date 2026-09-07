@@ -1003,12 +1003,29 @@ function createHandler(storeFactory) {
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
+        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
+        const cal = await readDoc(store, "calendar", calendarFallback);
+        const entry = (cal.doc.entries || []).find((e) => b.id === e.kind + ":" + e.id) || {};
+        const trainedIds = new Set(roster.doc.people.filter((p) => p.trained).map((p) => p.id));
+        let refused = null;
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
+          if (!me.lead && add.includes(me.id) && !s.who.includes(me.id)) {
+            const need = entry.need > 0 ? entry.need : d.required;
+            const defT = b.id.startsWith("e:") ? d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS : d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED;
+            const needT = Math.min(Number.isFinite(entry.needTrained) ? entry.needTrained : defT, need);
+            const on = s.who.length, trained = s.who.filter((id) => trainedIds.has(id)).length;
+            const held = Math.max(0, needT - trained);
+            const ok = trainedIds.has(me.id) ? on < need || held > 0 : on < need - held;
+            if (!ok) {
+              refused = held > 0 && on < need ? "That night is full apart from a place held for someone with the training." : "That night is full. Ask the club leader if you need to be on it.";
+              return false;
+            }
+          }
           s.who = [.../* @__PURE__ */ new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
           return d;
         });
+        if (refused) return fail(409, refused);
         return json(200, { section: doc });
       }
       if (!canManage) return fail(403, "Only the club coordinator can change that.");

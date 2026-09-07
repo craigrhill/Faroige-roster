@@ -17,8 +17,10 @@
 //   secretary  the club coordinator. Keeps the roster and the calendar: what
 //              is on, when, whether it is called off, and how many leaders it
 //              needs. On roster.html.
-//   lead       the club leader. Puts anyone on a night. On rota.html.
-//   (neither)  a leader: sees the rota and ticks only themselves.
+//   lead       the club leader. Puts anyone on a night, and is not held to
+//              the numbers. On rota.html.
+//   (neither)  a leader: puts themselves on a night while there is a place
+//              for them. First come, first served.
 // While no coordinator exists yet, club leaders hold the coordinator's powers
 // so nobody is locked out.
 //
@@ -34,8 +36,7 @@
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
 //                     slots: { <slotId>: { who: [personId] } } }
 //                   Only who is on a night lives here. What it needs, and
-//                   whether it is on at all, are on its calendar entry, set
-//                   where the night itself is edited.
+//                   whether it is on at all, are on its calendar entry.
 //
 // Slot ids are made by the page: "m:YYYY-MM-DD" for a club night,
 // "e:YYYY-MM-DD:Title" for an event. The server stores ticks against whatever
@@ -236,12 +237,37 @@ export function createHandler(storeFactory) {
         // A night's numbers, and whether it is on at all, belong to the night
         // itself: they are set on the calendar and are not taken here.
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only tick yourself.");
+        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
+        // A night fills up and then closes: that is what makes it first come,
+        // first served. Two things stop it deadlocking. A place is held for
+        // someone trained while the night still needs one, so the last seat
+        // cannot be taken by somebody who does not answer the rule; and if a
+        // night somehow ends up full without one, a trained leader can still
+        // get on it. A club leader is not held to any of this.
+        const cal = await readDoc(store, "calendar", calendarFallback);
+        const entry = (cal.doc.entries || []).find((e) => b.id === e.kind + ":" + e.id) || {};
+        const trainedIds = new Set(roster.doc.people.filter((p) => p.trained).map((p) => p.id));
+        let refused = null;
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
+          if (!me.lead && add.includes(me.id) && !s.who.includes(me.id)) {
+            const need = entry.need > 0 ? entry.need : d.required;
+            const defT = b.id.startsWith("e:") ? (d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS) : (d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
+            const needT = Math.min(Number.isFinite(entry.needTrained) ? entry.needTrained : defT, need);
+            const on = s.who.length, trained = s.who.filter((id) => trainedIds.has(id)).length;
+            const held = Math.max(0, needT - trained);
+            const ok = trainedIds.has(me.id) ? (on < need || held > 0) : (on < need - held);
+            if (!ok) {
+              refused = held > 0 && on < need
+                ? "That night is full apart from a place held for someone with the training."
+                : "That night is full. Ask the club leader if you need to be on it.";
+              return false;
+            }
+          }
           s.who = [...new Set([...s.who.filter((id) => !remove.includes(id)), ...add])].filter((id) => known.has(id));
           return d;
         });
+        if (refused) return fail(409, refused);
         return json(200, { section: doc });
       }
 

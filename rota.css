@@ -60,6 +60,8 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .who-chip .x{border:0;background:none;font:inherit;line-height:1;cursor:pointer;color:var(--stone-600);padding:.15em .4em;border-radius:999px}
 .who-chip .x:hover{background:rgba(0,0,0,.09);color:var(--ink)}
 .picks{display:flex;flex-wrap:wrap;gap:.5rem .9rem;align-items:center}
+.shut{font-size:.88rem;color:var(--stone-600);background:var(--stone-100);border-radius:999px;padding:.45em 1em}
+.link{display:inline-block;word-break:break-all;font:600 .95rem/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--stone-50);padding:.5rem .7rem;border-radius:10px;margin:.3rem 0;max-width:100%}
 .pick{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--stone-600)}
 select{font:inherit;font-size:.92rem;padding:.4em .5em;border:1px solid var(--stone-200);border-radius:10px;background:#fff;color:var(--ink);max-width:11rem}
 select:disabled{color:var(--stone-400);background:var(--stone-50)}
@@ -86,8 +88,8 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .entry select{max-width:8.5rem}
 .code{font:700 1.6rem/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:var(--stone-50);padding:.6rem .9rem;border-radius:10px;display:inline-block;margin:.3rem 0}
 .codes{display:grid;gap:.3rem;margin:.6rem 0 0}
-.codes div{display:flex;justify-content:space-between;gap:.8rem;font-size:.95rem;padding:.3rem .5rem;background:var(--stone-50);border-radius:8px}
-.codes b{font:700 1rem/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}
+.codes div{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;font-size:.95rem;padding:.3rem .5rem;background:var(--stone-50);border-radius:8px}
+.codes b{font:600 .82rem/1.35 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;text-align:right}
 .muted{color:var(--stone-600)}.small{font-size:.88rem}
 .empty{color:var(--stone-400);font-style:italic;padding:.6rem 0}
 .msg{font-size:.9rem;margin:.5rem 0 0}.msg.err{color:#7A1F2E}
