@@ -49,7 +49,10 @@ advisory: the function never refuses a tick for going over them.
 ## Layout
 
     rota.html               coverage, everyone. No settings: see above
-    events.html             the public page. No sign-in, no names
+    events.html             the public page, and where the bare address lands.
+                            No sign-in, no names. Admin at its foot goes to
+                            the roster; Your rota appears only for a browser
+                            that already holds a sign-in
     roster.html             the coordinator's page, including bulk add
     rota-lib.js             shared sign-in, API calls, config loading
     rota.css                shared styles

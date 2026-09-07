@@ -138,6 +138,21 @@ remove its ticks, and the page says so before it does.
    them gets a link, all shown together, once. The coordinator is the only
    one who signs in by name and password; they never type anything.
 
+## The three ways in
+
+The bare address goes to `/events`, because anyone might arrive at it and a
+parent is the likeliest. From there:
+
+* **Admin**, at the foot, goes to the roster for the coordinator's name and
+  password.
+* **Your rota** appears at the foot as well, but only for a browser that is
+  already signed in. A parent never sees it.
+* A **volunteer's own link** goes straight to the rota and signs them in.
+
+A browser is one person at a time, and a personal link deliberately beats
+whoever was signed in before, so testing two roles at once wants a private
+window.
+
 ## The public page
 
 `events.html` needs no sign-in and carries no names: the server hands it

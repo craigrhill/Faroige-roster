@@ -31,7 +31,10 @@
   <div id="callout" class="banner" hidden></div>
   <div id="list"></div>
 </main>
-<footer class="wrap" id="foot"></footer>
+<footer class="wrap">
+  <span id="foot"></span>
+  <span class="footlinks noprint"><a id="mine" href="rota.html" hidden>Your rota</a><a href="roster.html">Admin</a></span>
+</footer>
 
 <script src="rota-lib.js"></script>
 <script>
@@ -162,6 +165,7 @@ function render(){
     </article>`;
   }).join("") || `<div class="card"><div class="empty">Nothing coming up yet.</div></div>`;
 
+  $("mine").hidden = !token;
   $("foot").textContent = GAPS
     ? "No names are on this page. Share it freely."
     : "Dates can change. This page is kept up to date by the club.";

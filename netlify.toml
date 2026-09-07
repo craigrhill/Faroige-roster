@@ -8,8 +8,9 @@
   [headers.values]
     X-Robots-Tag = "noindex"
 
-# The bare site address goes to the rota, which is the page everyone uses.
+# The bare address goes to what is on, which is the page anyone might arrive
+# at. The rota and the roster are reached from there, or by a personal link.
 [[redirects]]
   from = "/"
-  to = "/rota.html"
+  to = "/events"
   status = 302

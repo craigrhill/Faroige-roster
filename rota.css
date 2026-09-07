@@ -179,5 +179,7 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .empty{color:var(--stone-400);font-style:italic;padding:.6rem 0}
 .msg{font-size:.9rem;margin:.5rem 0 0}.msg.err{color:#7A1F2E}
 details summary{cursor:pointer;font-weight:500;color:var(--green-700)}
-footer{padding:1.5rem 0 3rem;font-size:.85rem;color:var(--stone-600)}
+footer{padding:1.5rem 0 3rem;font-size:.85rem;color:var(--stone-600);display:flex;flex-wrap:wrap;gap:.5rem 1.2rem;align-items:baseline;justify-content:space-between}
+.footlinks{display:flex;gap:1rem;margin-left:auto}
+.footlinks a{color:var(--stone-600);text-decoration:underline}
 [hidden]{display:none!important}

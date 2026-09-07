@@ -33,7 +33,7 @@ createServer(async (req, res) => {
   }
   // Keep the path inside the repo: strip leading slashes after normalising.
   const rel = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "").replace(/^[/\\]+/, "");
-  const file = join(process.cwd(), rel || "rota.html");
+  const file = join(process.cwd(), rel || "events.html");
   try {
     const buf = await readFile(file);
     res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream" });
@@ -42,4 +42,4 @@ createServer(async (req, res) => {
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not found");
   }
-}).listen(port, () => console.log(`http://127.0.0.1:${port}/rota.html`));
+}).listen(port, () => console.log(`http://127.0.0.1:${port}/events.html`));
