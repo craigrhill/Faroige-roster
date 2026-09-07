@@ -1,0 +1,14 @@
+{
+  "name": "faroige-roster",
+  "private": true,
+  "description": "Volunteer rota for a Foroige club. Two static pages and one Netlify Function; see CLAUDE.md.",
+  "scripts": {
+    "build:function": "esbuild netlify/src/foroige.mjs --bundle --platform=node --format=esm --outdir=netlify/functions --out-extension:.js=.mjs --log-level=warning",
+    "test:function": "node tools/test-foroige.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "devDependencies": {
+    "@netlify/blobs": "11.0.3",
+    "esbuild": "^0.28.2"
+  }
+}

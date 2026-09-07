@@ -1,0 +1,82 @@
+/* Shared by rota.html and roster.html. A green palette of its own: these pages
+   do not use Foroige's brand assets, only a colour scheme that suits them. */
+:root{
+  --stone-50:#F5F3EE;--stone-100:#E9E6DE;--stone-200:#D5D1C7;--stone-400:#9B978D;--stone-600:#5D5B54;--ink:#1E2222;
+  --green-700:#1B5E45;--green-500:#2E8B62;--green-300:#8FC9AE;--green-100:#DDEFE5;
+  --amber:#E08A00;--amber-dark:#B06B00;--amber-soft:#FDEEDA;
+  --blue-700:#24557F;--blue-100:#DEEAF6;
+  --radius:16px;--shadow:0 8px 24px rgba(30,34,34,.08),0 1px 2px rgba(30,34,34,.06);
+  --serif:"Fraunces",Georgia,serif;--sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--stone-50);line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:700;line-height:1.15;margin:0 0 .4em;letter-spacing:-.01em}
+h1{font-size:1.7rem}h2{font-size:1.25rem}
+p{margin:0 0 .9em}
+a{color:var(--green-700)}
+.wrap{width:min(920px,100% - 2rem);margin:0 auto}
+.appbar{background:var(--green-700);color:#fff;padding:.9rem 0 .8rem}
+.appbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.brand{font-family:var(--serif);font-weight:700;font-size:1.1rem}
+.brand small{display:block;font-family:var(--sans);font-weight:500;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.pill{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--amber);color:#fff;padding:.3em .7em;border-radius:999px;white-space:nowrap}
+.card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.1rem;margin-bottom:.9rem;border:1px solid rgba(0,0,0,.03)}
+.banner{background:var(--amber-soft);border-left:4px solid var(--amber);padding:.8rem 1rem;border-radius:12px;margin:1rem 0;font-size:.92rem}
+.banner.err{background:#FBE9EC;border-color:#B0306A}
+.chips{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0 1rem}
+.chip{border:1px solid var(--stone-200);background:#fff;border-radius:999px;padding:.4em 1em;font-weight:500;cursor:pointer;font:inherit}
+.chip.on{background:var(--green-700);color:#fff;border-color:var(--green-700)}
+.row{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+.row label{font-weight:500}
+input[type=number]{width:4.5rem;font:inherit;padding:.35em .5em;border:1px solid var(--stone-200);border-radius:8px}
+input[type=text],input[type=password],textarea{flex:1;min-width:10rem;font:inherit;padding:.55em .7em;border:1px solid var(--stone-200);border-radius:10px}
+textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
+.btn{font:inherit;font-weight:600;border:0;border-radius:999px;padding:.55em 1.1em;background:var(--green-100);color:var(--green-700);cursor:pointer}
+.btn.primary{background:var(--green-700);color:#fff}
+.btn.quiet{background:none;color:var(--stone-600);padding:.4em .6em}
+.needs{display:flex;gap:.6rem 1.4rem;flex-wrap:wrap;align-items:center}
+.gaps{display:grid;gap:.4rem}
+.gap{display:flex;justify-content:space-between;gap:.6rem;padding:.5rem .7rem;border-radius:10px;background:#FBE9EC;color:#7A1F2E;font-weight:500}
+.gap.ok{background:var(--green-100);color:#1B5E45}
+.gap.warn{background:var(--amber-soft);color:#7A4A00}
+.count{font-variant-numeric:tabular-nums;white-space:nowrap}
+.slot{border-top:1px solid var(--stone-100);padding:.8rem 0}
+.slot:first-of-type{border-top:0}
+.slot-head{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem}
+.slot-head .when{font-weight:600}
+.slot-head .sub{color:var(--stone-600);font-size:.88rem}
+.status{font-size:.74rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.2em .6em;border-radius:999px;white-space:nowrap}
+.status.gap{background:#FBE9EC;color:#7A1F2E}
+.status.ok{background:var(--green-100);color:#1B5E45}
+.status.warn{background:var(--amber-soft);color:#7A4A00}
+.status.off{background:var(--stone-100);color:var(--stone-600)}
+.who{display:flex;flex-wrap:wrap;gap:.45rem .9rem;margin-top:.5rem}
+.who label{display:inline-flex;align-items:center;gap:.35rem;font-size:.95rem}
+.who label.me{font-weight:600}
+.who label.locked{color:var(--stone-600)}
+.who input{width:18px;height:18px;accent-color:var(--green-700)}
+.tag{font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--blue-100);color:var(--blue-700);padding:.15em .5em;border-radius:999px;white-space:nowrap}
+.slot-foot{display:flex;flex-wrap:wrap;align-items:center;gap:.2rem 1rem;margin-top:.45rem;font-size:.85rem;color:var(--stone-600)}
+.need{display:inline-flex;align-items:center;gap:.45rem}
+.need input{width:3.4rem;padding:.25em .4em}
+.custom{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--amber-dark);background:var(--amber-soft);padding:.15em .5em;border-radius:999px}
+.person{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;padding:.6rem 0;border-top:1px solid var(--stone-100)}
+.person:first-child{border-top:0}
+.person .nm{font-weight:600;min-width:9rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.person .nm small{width:100%;font-weight:500;font-size:.72rem;color:var(--amber-dark);letter-spacing:.06em;text-transform:uppercase}
+.secs{display:flex;flex-wrap:wrap;gap:.35rem}
+.secs label{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;border:1px solid var(--stone-200);border-radius:999px;padding:.2em .65em;background:#fff;cursor:pointer}
+.secs input{accent-color:var(--green-700);margin:0}
+.tools{margin-left:auto;display:flex;gap:.2rem;align-items:center;flex-wrap:wrap}
+.tools label{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}
+.add{display:grid;gap:.55rem;margin-top:.8rem}
+.code{font:700 1.6rem/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:var(--stone-50);padding:.6rem .9rem;border-radius:10px;display:inline-block;margin:.3rem 0}
+.codes{display:grid;gap:.3rem;margin:.6rem 0 0}
+.codes div{display:flex;justify-content:space-between;gap:.8rem;font-size:.95rem;padding:.3rem .5rem;background:var(--stone-50);border-radius:8px}
+.codes b{font:700 1rem/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.06em}
+.muted{color:var(--stone-600)}.small{font-size:.88rem}
+.empty{color:var(--stone-400);font-style:italic;padding:.6rem 0}
+.msg{font-size:.9rem;margin:.5rem 0 0}.msg.err{color:#7A1F2E}
+details summary{cursor:pointer;font-weight:500;color:var(--green-700)}
+footer{padding:1.5rem 0 3rem;font-size:.85rem;color:var(--stone-600)}
+[hidden]{display:none!important}

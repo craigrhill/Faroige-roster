@@ -1,0 +1,15 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# Nothing here is meant to be found, only handed out.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex"
+
+# The bare site address goes to the rota, which is the page everyone uses.
+[[redirects]]
+  from = "/"
+  to = "/rota.html"
+  status = 302

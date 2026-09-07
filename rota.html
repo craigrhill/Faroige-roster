@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Rota: Foroige club leaders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="rota.css">
+</head>
+<body>
+<header class="appbar"><div class="wrap">
+  <div class="brand"><span data-club-name>Foroige club</span><small>Leaders' rota</small></div>
+  <span class="pill">Leaders only</span>
+</div></header>
+<main class="wrap">
+  <div id="err" class="banner err" hidden></div>
+
+  <section id="gate" hidden>
+    <h1>Sign in</h1>
+    <p class="muted">Enter the code the club coordinator gave you. It signs this phone in for twelve months.</p>
+    <div class="card">
+      <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
+      <p class="msg" id="gateMsg"></p>
+    </div>
+    <p class="small muted">No code? Ask the club coordinator, who keeps the roster.</p>
+  </section>
+
+  <section id="app" hidden>
+    <div class="row" style="justify-content:space-between;margin:.9rem 0 .2rem">
+      <span class="small muted">Signed in as <b id="meName"></b><span id="meRole"></span></span>
+      <span><a id="rosterLink" class="btn quiet" href="roster.html" hidden>Roster</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
+    </div>
+
+    <h1>Who is covering what</h1>
+    <p class="muted">The club nights and events coming up. Tick yourself in for the ones you can do. A club night is only covered when it has enough leaders <em>and</em> one of them holds <span data-training-label>the training</span>. Events are away from the building, so they just need the leaders.</p>
+    <div class="chips" id="chips" hidden></div>
+
+    <div class="card">
+      <h2>How many are needed</h2>
+      <div class="needs"><label class="need"><span>Leaders on every club night and event</span><input type="number" id="req" min="1" max="9"></label></div>
+      <div class="needs"><label class="need"><span>How many of them hold <span data-training-label>the training</span>, on a club night</span><input type="number" id="reqT" min="0" max="9"></label></div>
+      <div class="needs"><label class="need"><span>and at an event</span><input type="number" id="reqE" min="0" max="9"></label></div>
+      <p class="small muted" style="margin:.6rem 0 0" id="reqNote"></p>
+    </div>
+
+    <div class="card"><h2>Gaps</h2><div class="gaps" id="gaps"></div></div>
+    <div class="card"><h2>Upcoming</h2><div id="slots"></div></div>
+
+    <div class="card">
+      <h2 id="peopleTitle">Leaders</h2>
+      <p class="small muted" id="peopleNote"></p>
+      <div id="people"></div>
+    </div>
+  </section>
+</main>
+<footer class="wrap">Nothing on this page is public. Codes are personal: do not share yours.</footer>
+
+<script src="rota-lib.js"></script>
+<script>
+const SK = "foroige-section";
+const DAYS = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+let C = null, D = null;
+function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
+function keys(){ return C.settings.sections.map(x => x.key); }
+function sec(){ let k = null; try { k = localStorage.getItem(SK); } catch {} return keys().includes(k) ? k : keys()[0]; }
+function sectionName(k){ return (C.settings.sections.find(x => x.key === k) || {}).name || k; }
+function iso(d){ return d.toISOString().slice(0, 10); }
+function upcoming(k){
+  const section = C.settings.sections.find(x => x.key === k) || {};
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const out = [], wd = DAYS[(section.day || "").toLowerCase()];
+  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: [section.time, section.venue].filter(Boolean).join(", "), kind: "meeting" });
+  // A club night comes either from a weekday, which fills the next eight
+  // weeks, or from a list of confirmed dates, or from both.
+  if (wd !== undefined) {
+    const d = new Date(today); while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
+    for (let i = 0; i < 8; i++) { out.push(night(iso(d))); d.setDate(d.getDate() + 7); }
+  }
+  (section.dates || []).filter(date => date >= iso(today) && !out.some(x => x.id === "m:" + date)).forEach(date => out.push(night(date)));
+  (C.events || []).filter(e => e.date >= iso(today) && (e.section === k || !e.section || e.section === "all"))
+    .forEach(e => out.push({ id: "e:" + e.date + ":" + e.title, date: e.date, title: e.title, sub: [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", "), kind: "event" }));
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+const personById = id => (D.people || []).find(p => p.id === id);
+const slotOf = (k, id) => (D.sections[k] && D.sections[k].slots[id]) || { who: [], off: false };
+const needOf = (k, id) => { const s = slotOf(k, id); return s.need > 0 ? s.need : D.sections[k].required; };
+// An event is away from the building, so it carries its own default, which is
+// normally nobody. Either can still be set on one night or one event.
+const needTOf = (k, id) => { const s = slotOf(k, id); return Number.isFinite(s.needTrained) ? s.needTrained
+  : id.startsWith("e:") ? D.sections[k].requiredTrainedEvents : D.sections[k].requiredTrained; };
+const trainedIn = (k, id) => slotOf(k, id).who.filter(pid => { const p = personById(pid); return p && p.trained; }).length;
+// One night's state: how many are on it, how many of those are trained, and
+// which of the two rules it falls short of.
+function state(k, id){
+  const s = slotOf(k, id), n = s.who.length, t = trainedIn(k, id), need = needOf(k, id), needT = needTOf(k, id);
+  return { s, n, t, need, needT, shortPeople: n < need, shortTrained: t < needT, ok: n >= need && t >= needT };
+}
+// A night with nobody on it is short of everyone, so saying it is also short
+// of a trained leader adds nothing. Only say it once somebody is on it.
+function reason(st){
+  if (!st.shortPeople) return `no ${TRAIN.short}`;
+  return `${st.n} of ${st.need}` + (st.shortTrained && st.n ? `, none trained` : "");
+}
+
+function render(){
+  const k = sec(), me = D.me, lead = !!me.lead, sect = D.sections[k] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, slots: {} };
+  $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
+  $("rosterLink").hidden = !me.secretary;
+  const many = C.settings.sections.length > 1;
+  $("chips").hidden = !many;
+  if (many) $("chips").innerHTML = C.settings.sections.map(x => `<button class="chip ${x.key === k ? "on" : ""}" onclick="pick('${esc(x.key)}')">${esc(x.name)}</button>`).join("");
+  for (const [id, v] of [["req", sect.required], ["reqT", sect.requiredTrained], ["reqE", sect.requiredTrainedEvents]]) { $(id).value = v; $(id).disabled = !lead; }
+  $("reqNote").textContent = (sect.requiredTrainedEvents ? "" : `Events are away from the building, so they do not need anyone with ${TRAIN.label.toLowerCase()}. `)
+    + (lead ? "Change the numbers on a single club night or event below if one of them is different."
+            : "Set by the club leader.");
+
+  // With several clubs a person covers the ones the coordinator ticked. With
+  // one club there is nothing to tick, so everyone on the roster covers it.
+  const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byName);
+  const live = slots.filter(x => !slotOf(k, x.id).off);
+  const bad = live.map(x => ({ x, st: state(k, x.id) })).filter(o => !o.st.ok);
+  // Worth calling out separately: nights that have the leaders but nobody trained.
+  const noTrained = bad.filter(o => o.st.shortTrained && !o.st.shortPeople).length;
+  $("gaps").innerHTML = (live.length
+      ? `<div class="gap ${bad.length ? "warn" : "ok"}"><span>${live.length - bad.length} of ${live.length} covered${noTrained ? `, ${noTrained} with leaders but nobody trained` : ""}</span><span class="count">${sect.required} needed, ${sect.requiredTrained} trained</span></div>`
+      : "")
+    + (bad.map(o => `<div class="gap"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
+      || (live.length ? "" : `<div class="empty">No dates yet. They go in rota-config.json once they are confirmed.</div>`));
+
+  $("slots").innerHTML = slots.map(x => {
+    const st = state(k, x.id), s = st.s;
+    const custom = s.need > 0 || Number.isFinite(s.needTrained);
+    const status = s.off ? `<span class="status off">No club</span>`
+      : st.ok ? `<span class="status ok">Covered</span>`
+      : st.shortPeople ? `<span class="status gap">${st.n} of ${st.need}</span>`
+      : `<span class="status warn">No ${esc(TRAIN.short)}</span>`;
+    const listed = [...names]; s.who.forEach(id => { if (!listed.some(p => p.id === id)) { const p = personById(id); if (p) listed.push(p); } });
+    const boxes = listed.map(p => { const on = s.who.includes(p.id), can = lead || p.id === me.id;
+      return `<label class="${p.id === me.id ? "me" : ""} ${can ? "" : "locked"}"><input type="checkbox" ${on ? "checked" : ""} ${can ? "" : "disabled"} onchange="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',this.checked)">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}</label>`; }).join("");
+    return `<div class="slot">
+      <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
+      ${s.off ? "" : `<div class="who">${boxes || `<span class="empty">Nobody on the roster for ${esc(sectionName(k))} yet.</span>`}</div>`}
+      <div class="slot-foot">
+        ${s.off ? "" : lead
+          ? `<label class="need">Leaders <input type="number" min="1" max="9" value="${st.need}" onchange="setNeed('${esc(k)}','${esc(x.id)}',this.value)"></label>
+             <label class="need">trained <input type="number" min="0" max="9" value="${st.needT}" onchange="setNeedT('${esc(k)}','${esc(x.id)}',this.value)"></label>
+             ${custom ? `<span class="custom">changed</span>` : ""}`
+          : `<span>${st.need} leader${st.need === 1 ? "" : "s"} needed${st.needT ? `, ${st.needT} with ${esc(TRAIN.short)}` : ""}${custom ? " (set for this one)" : ""}</span>`}
+        ${st.n && !s.off && st.needT ? `<span>${st.t} trained on it</span>` : ""}
+        ${x.kind === "meeting" && lead ? `<label><input type="checkbox" ${s.off ? "checked" : ""} onchange="setOff('${esc(k)}','${esc(x.id)}',this.checked)"> No club this week</label>` : ""}
+      </div>
+    </div>`;
+  }).join("") || `<div class="empty">Nothing coming up.</div>`;
+
+  // The roster is the coordinator's. Here it is read-only: who can cover this club.
+  $("peopleTitle").textContent = many ? "Leaders for " + sectionName(k) : "Leaders";
+  $("peopleNote").textContent = lead
+    ? `From the roster the coordinator keeps. ${names.filter(p => p.trained).length} of ${names.length} hold ${TRAIN.label.toLowerCase()}. To add someone or change their training, ask the coordinator.`
+    : "To change your details, ask the club coordinator.";
+  $("people").innerHTML = lead ? (names.map(p => `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.lead ? "<small>club leader</small>" : ""}</span></div>`).join("") || `<div class="empty">Nobody on the roster yet.</div>`) : "";
+}
+async function load(){ showErr(""); D = await api("GET", "?sections=" + keys().join(",")); $("gate").hidden = true; $("app").hidden = false; render(); }
+// On a rejected change, put the inputs back to what the server actually holds.
+async function guarded(fn){ try { await fn(); } catch (e) { showErr(e.message); if (D) render(); } }
+function pick(k){ try { localStorage.setItem(SK, k); } catch {} render(); }
+function putSection(k, doc){ D.sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained, requiredTrainedEvents: doc.requiredTrainedEvents, slots: doc.slots, updatedAt: doc.updatedAt }; render(); }
+const tick = (k, id, pid, on) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, [on ? "add" : "remove"]: [pid] })).section));
+const setNeed = (k, id, v) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, need: Number(v) })).section));
+const setNeedT = (k, id, v) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, needTrained: Number(v) })).section));
+const setOff = (k, id, off) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, off })).section));
+const setRequired = () => guarded(async () => putSection(sec(), (await api("POST", "?a=required", { section: sec(),
+  required: Number($("req").value), requiredTrained: Number($("reqT").value), requiredTrainedEvents: Number($("reqE").value) })).section));
+for (const id of ["req", "reqT", "reqE"]) $(id).addEventListener("change", setRequired);
+function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
+onUnauthorized = signOut;
+async function boot(){
+  C = await loadContent();
+  if (token) { try { await load(); return; } catch (e) { if (token) showErr(e.message); } }
+  $("gate").hidden = false;
+}
+boot();
+</script>
+</body>
+</html>

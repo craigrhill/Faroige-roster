@@ -1,0 +1,183 @@
+#!/usr/bin/env node
+// Offline harness for the Foroige rota function: drives the handler with an
+// in-memory store and real Requests, so it covers codes and tokens,
+// permissions, the training rule, bulk add, the last-coordinator guard,
+// revocation, and the conditional-write retry. It never touches Netlify.
+import { createHandler, memoryStore } from "../netlify/src/foroige.mjs";
+
+const store = memoryStore();
+const handler = createHandler(() => store);
+const base = "https://x.test/.netlify/functions/foroige";
+let pass = 0, fail = 0;
+const ok = (name, got, want) => { const good = JSON.stringify(got) === JSON.stringify(want); good ? pass++ : fail++; console.log(`${good ? "PASS" : "FAIL"}  ${name}${good ? "" : `\n        got  ${JSON.stringify(got)}\n        want ${JSON.stringify(want)}`}`); };
+async function call(method, q, { token, admin, body: b } = {}) {
+  const h = { "Content-Type": "application/json" }; if (token) h["x-rota-token"] = token; if (admin) h["x-admin-password"] = admin;
+  const r = await handler(new Request(base + q, { method, headers: h, body: b ? JSON.stringify(b) : undefined }));
+  const text = await r.text(); let j; try { j = JSON.parse(text); } catch { j = text; }
+  return { status: r.status, j };
+}
+
+// No admin password set at all: bootstrap is refused, and says why.
+delete process.env.ADMIN_PASSWORD;
+let r = await call("POST", "?a=bootstrap", { admin: "anything", body: { name: "Coord" } });
+ok("bootstrap with no ADMIN_PASSWORD set is 503", [r.status, /ADMIN_PASSWORD/.test(r.j.error)], [503, true]);
+process.env.ADMIN_PASSWORD = "admin-for-test";
+
+r = await call("OPTIONS", "");                              ok("OPTIONS is 204", r.status, 204);
+r = await call("GET", "?sections=club");                    ok("GET without token is 401", r.status, 401);
+r = await call("POST", "?a=bootstrap", { admin: "wrong", body: { name: "Coord" } }); ok("bootstrap with wrong password is 401", r.status, 401);
+r = await call("POST", "?a=bootstrap", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
+ok("bootstrap creates a coordinator who is also a club leader, in the club", [r.status, r.j.person.secretary, r.j.person.lead, r.j.person.sections], [200, true, true, ["club"]]);
+ok("the first coordinator is not assumed to be trained", r.j.person.trained, false);
+const coordCode = r.j.code; ok("code has the expected shape", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(coordCode), true);
+ok("secret was generated in the store", store._map.has("secret"), true);
+r = await call("POST", "?a=login", { body: { code: "AAAA-AAAA" } }); ok("login with a bad code is 401", r.status, 401);
+r = await call("POST", "?a=login", { body: { code: coordCode.toLowerCase().replace("-", " ") } });
+ok("login tolerates case and separators", [r.status, r.j.me.secretary], [200, true]);
+const coord = r.j.token, coordId = r.j.me.id;
+r = await call("GET", "?sections=club", { token: coord });
+ok("a club defaults to 3 leaders, 1 trained on a club night, none at an event",
+  [r.status, r.j.sections.club.required, r.j.sections.club.requiredTrained, r.j.sections.club.requiredTrainedEvents], [200, 3, 1, 0]);
+r = await call("GET", "?sections=club", { token: coord.slice(0, -2) + "zz" }); ok("tampered token is 401", r.status, 401);
+
+// People, and the training flag.
+r = await call("POST", "?a=person", { token: coord, body: { name: "Trained One", sections: ["club", "bad key!"], trained: true } });
+ok("coordinator adds a trained leader; bad club keys dropped", [r.status, r.j.person.trained, r.j.person.sections], [200, true, ["club"]]);
+const trainedCode = r.j.code, trainedId = r.j.person.id;
+r = await call("POST", "?a=person", { token: coord, body: { name: "Helper One", sections: ["club"] } });
+ok("someone added without the flag is not trained", r.j.person.trained, false);
+const helperCode = r.j.code, helperId = r.j.person.id;
+r = await call("POST", "?a=person", { token: coord, body: { name: "helper one", sections: [] } }); ok("duplicate name is 409", r.status, 409);
+
+// Bulk add: skips names already there, marks the trained ones, returns codes.
+r = await call("POST", "?a=people", { token: coord, body: { people: [
+  { name: "Bulk Trained", sections: ["club"], trained: true },
+  { name: "Bulk Plain", sections: ["club"] },
+  { name: "Helper One", sections: ["club"] },
+  { name: "  ", sections: ["club"] }
+] } });
+ok("bulk add returns codes for the new names only", [r.status, r.j.added.length, r.j.skipped], [200, 2, ["Helper One"]]);
+ok("bulk add carries the training flag", r.j.added.map(a => a.person.trained), [true, false]);
+ok("bulk codes are all different", new Set(r.j.added.map(a => a.code)).size, 2);
+ok("bulk add never makes anyone a coordinator", r.j.added.every(a => a.person.secretary === false), true);
+const bulkTrainedId = r.j.added[0].person.id;
+r = await call("POST", "?a=people", { token: coord, body: { people: [{ name: "Bulk Plain" }] } });
+ok("a bulk add of only known names adds nobody", [r.status, r.j.added.length, r.j.skipped], [200, 0, ["Bulk Plain"]]);
+r = await call("POST", "?a=people", { token: coord, body: { people: [] } }); ok("an empty bulk add is 400", r.status, 400);
+r = await call("POST", "?a=login", { body: { code: helperCode } }); const helper = r.j.token;
+r = await call("POST", "?a=people", { token: helper, body: { people: [{ name: "Sneaky" }] } }); ok("a plain leader cannot bulk add", r.status, 403);
+
+// Ticking, and the two thresholds.
+const night = "m:2030-01-02";
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [helperId] } });
+ok("a leader ticks themselves", [r.status, r.j.section.slots[night].who], [200, [helperId]]);
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, add: [coordId] } }); ok("a leader cannot tick someone else", r.status, 403);
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, need: 4 } });         ok("a leader cannot change the numbers needed", r.status, 403);
+r = await call("POST", "?a=slot", { token: helper, body: { section: "club", id: night, needTrained: 0 } });  ok("nor the trained number", r.status, 403);
+r = await call("POST", "?a=person", { token: helper, body: { name: "X" } });                                 ok("nor add people", r.status, 403);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, add: [coordId, bulkTrainedId] } });
+ok("the club leader ticks two more in", r.j.section.slots[night].who.length, 3);
+
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 2 } });
+ok("the club leader raises the trained number", [r.status, r.j.section.requiredTrained], [200, 2]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 4 } });
+ok("more trained leaders than leaders is refused", [r.status, r.j.error], [400, "You cannot need more trained leaders than leaders."]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 0 } });   ok("zero leaders is refused", r.status, 400);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 12 } });  ok("more than nine leaders is refused", r.status, 400);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: -1 } }); ok("a negative trained number is refused", r.status, 400);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 0 } });
+ok("needing nobody trained is allowed, for a club with no rule", [r.status, r.j.section.requiredTrained, r.j.section.required], [200, 0, 3]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrained: 1 } });
+ok("and back to one, leaving the leaders number alone", [r.j.section.required, r.j.section.requiredTrained], [3, 1]);
+r = await call("POST", "?a=required", { token: helper, body: { section: "club", required: 2 } }); ok("a plain leader cannot set the numbers", r.status, 403);
+
+// Per night overrides.
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 5, needTrained: 2 } });
+ok("one night can need more than the club default", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained], [5, 2]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3 } });
+ok("setting a night back to the club default drops the override", "need" in r.j.section.slots[night], false);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 1 } });
+// Clamped down to 1, which is the club default, so the override is dropped
+// rather than stored: the effective number is what matters.
+ok("dropping a night to one leader clamps its trained number down too", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained ?? r.j.section.requiredTrained], [1, 1]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3, needTrained: 1 } });
+ok("and clearing both overrides leaves the night on the club default", ["need" in r.j.section.slots[night], "needTrained" in r.j.section.slots[night]], [false, false]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 4, requiredTrained: 2 } });
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 1 } });
+ok("clamping below the club default stores the lower trained number", [r.j.section.slots[night].need, r.j.section.slots[night].needTrained], [1, 1]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 1 } });
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, need: 3, needTrained: 1 } });
+
+const event = "e:2030-02-01:Halloween disco";
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: event, add: [trainedId], needTrained: 2 } });
+ok("an event takes ticks and its own trained number", [r.status, r.j.section.slots[event].who, r.j.section.slots[event].needTrained], [200, [trainedId], 2]);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: "m:2030-01-09", off: true } });
+ok("the club leader marks a week as no club", r.j.section.slots["m:2030-01-09"].off, true);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: event, add: ["nope"] } }); ok("unknown person id is 400", r.status, 400);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: "not a date" } });        ok("bad slot id is 400", r.status, 400);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "Club!", id: night } });               ok("bad club key is 400", r.status, 400);
+
+// The page needs the training flag on every person to count a night, so it
+// must survive a GET.
+r = await call("GET", "?sections=club", { token: helper });
+ok("everyone in the club is visible to a plain leader", r.j.people.length, 5);
+ok("the trained flag comes back with each person", r.j.people.filter(p => p.trained).map(p => p.name).sort(), ["Bulk Trained", "Trained One"]);
+ok("no code hashes leak in GET", JSON.stringify(r.j).includes("codeHash"), false);
+
+// Conditional-write retry: make the next conditional set fail once, as it would if someone else saved first.
+const realSet = store.set.bind(store); let failed = 0;
+store.set = async (k, v, o) => { if (!failed && o && o.onlyIfMatch) { failed++; return { modified: false }; } return realSet(k, v, o); };
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night, remove: [coordId] } });
+ok("a conflicting write is retried and lands", [failed, r.status, r.j.section.slots[night].who.includes(coordId)], [1, 200, false]);
+store.set = realSet;
+
+// The training rule is about the building, so it follows the kind of night.
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", required: 3, requiredTrained: 1, requiredTrainedEvents: 0 } });
+ok("the three numbers are set together", [r.j.section.required, r.j.section.requiredTrained, r.j.section.requiredTrainedEvents], [3, 1, 0]);
+const trip = "e:2030-03-01:Day trip";
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: trip, needTrained: 0 } });
+ok("an event set to nobody trained stores no override, since that is its default", "needTrained" in (r.j.section.slots[trip] || {}), false);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: trip, needTrained: 1 } });
+ok("an event that does need a trained leader stores the override", r.j.section.slots[trip].needTrained, 1);
+const night2 = "m:2030-03-06";
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night2, needTrained: 1 } });
+ok("a club night set to one trained stores no override, since that is its default", "needTrained" in (r.j.section.slots[night2] || {}), false);
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: night2, needTrained: 0 } });
+ok("a club night let off the rule stores the override", r.j.section.slots[night2].needTrained, 0);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 1 } });
+ok("raising the events default collapses the event override that now matches it", "needTrained" in r.j.section.slots[trip], false);
+ok("and leaves the club night override alone, it belongs to the other kind", r.j.section.slots[night2].needTrained, 0);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 4 } });
+ok("more trained at an event than leaders is refused", [r.status, r.j.error], [400, "You cannot need more trained leaders than leaders."]);
+r = await call("POST", "?a=required", { token: coord, body: { section: "club", requiredTrainedEvents: 0 } });
+ok("and back to nobody trained at an event", r.j.section.requiredTrainedEvents, 0);
+
+// Codes, roles and removal.
+r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); const newCode = r.j.code;
+ok("recode returns a fresh code", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(newCode) && newCode !== helperCode, true);
+r = await call("POST", "?a=login", { body: { code: helperCode } }); ok("old code no longer works", r.status, 401);
+r = await call("POST", "?a=login", { body: { code: newCode } });    ok("new code works", r.status, 200);
+const helper2 = r.j.token;
+r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: false } });
+ok("the coordinator can take the training flag off someone", r.j.person.trained, false);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: true, lead: true } });
+ok("and put it back, with club leader too", [r.j.person.trained, r.j.person.lead], [true, true]);
+r = await call("POST", "?a=person-update", { token: helper2, body: { id: trainedId, trained: false } }); ok("a plain leader cannot change anyone's training", r.status, 403);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: coordId, secretary: false } }); ok("cannot demote the only coordinator", r.status, 409);
+r = await call("POST", "?a=person-remove", { token: coord, body: { id: coordId, sections: [] } });     ok("cannot remove the only coordinator", r.status, 409);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, secretary: true } }); ok("a second coordinator can be made", r.j.person.secretary, true);
+r = await call("POST", "?a=person-update", { token: coord, body: { id: coordId, secretary: false } });  ok("now the first can step down", r.status, 200);
+r = await call("POST", "?a=person", { token: coord, body: { name: "Y" } });                             ok("and loses roster powers at once", r.status, 403);
+// A roster with club leaders but no coordinator: leads keep roster powers.
+{ const raw = JSON.parse(store._map.get("roster").value); raw.people.forEach(p => { p.secretary = false; p.lead = true; }); store._map.set("roster", { value: JSON.stringify(raw), etag: "legacy" });
+  r = await call("POST", "?a=person", { token: coord, body: { name: "Legacy Add" } }); ok("with no coordinator, a club leader can still manage the roster", r.status, 200);
+  const raw2 = JSON.parse(store._map.get("roster").value); raw2.people = raw2.people.filter(p => p.name !== "Legacy Add"); raw2.people.find(p => p.id === trainedId).secretary = true; store._map.set("roster", { value: JSON.stringify(raw2), etag: "legacy2" }); }
+r = await call("POST", "?a=login", { body: { code: trainedCode } }); const trained = r.j.token;
+r = await call("POST", "?a=person-remove", { token: trained, body: { id: coordId, sections: ["club"] } });
+ok("removing someone takes them off the roster", [r.status, r.j.people.some(p => p.id === coordId)], [200, false]);
+r = await call("GET", "?sections=club", { token: coord }); ok("a removed person's token is revoked", r.status, 401);
+r = await call("GET", "?sections=club", { token: trained });
+ok("and their ticks are gone from the night", r.j.sections.club.slots[night].who.includes(coordId), false);
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

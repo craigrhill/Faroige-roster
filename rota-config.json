@@ -1,0 +1,24 @@
+{
+  "club": {
+    "name": "Foroige club"
+  },
+  "training": {
+    "label": "Building training",
+    "short": "Building",
+    "note": "Building specific training from the ETB. One leader on every club night must hold it. Events are away from the building and do not need one."
+  },
+  "settings": {
+    "sections": [
+      {
+        "key": "club",
+        "name": "Club night",
+        "time": "7:30 to 9:00 pm",
+        "venue": "The Hall",
+        "day": "",
+        "dates": [],
+        "_dates": "Club nights, once BOETC confirms them, as \"2026-10-08\". Or set day to a weekday name instead and the next eight weeks fill themselves."
+      }
+    ]
+  },
+  "events": []
+}
