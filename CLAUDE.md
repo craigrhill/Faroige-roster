@@ -48,7 +48,7 @@ advisory: the function never refuses a tick for going over them.
 
 ## Layout
 
-    rota.html               coverage, everyone. No settings: see above
+    rota.html               coverage, everyone. Three tabs, no settings
     events.html             the public page, and where the bare address lands.
                             No sign-in, no names. Admin at its foot goes to
                             the roster; Your rota appears only for a browser
@@ -165,10 +165,17 @@ Both pages carry `<meta name="referrer" content="no-referrer">`. Without it
 the Google Fonts request would carry the whole URL, code and all, in the
 Referer header.
 
+**The rota is three tabs**, remembered in `localStorage` under
+`foroige-tab`: Gaps (what is still short, each row offering itself to anyone
+who can take it), Availability (every night, with the controls), and My
+calendar (the nights this person is on and that are going ahead, so a night
+called off drops out of it). One `slotCard()` renders a night for both
+Availability and My calendar, so they cannot drift apart.
+
 **The rota is where the overriding happens.** The coordinator gets the
 pull-downs, can put anyone on or take them off, and is not held to the
-numbers. In the page that is the `lead` variable in `render()`, now just
-`me.secretary`; in the function it is `boss`.
+numbers. It is the `boss` variable in both, `!!me.secretary` in `render()`
+and the same flag in the function.
 
 **A night fills up and then closes.** Anyone puts themselves on while there
 is a place; once there is not, the button is gone and `?a=slot` answers 409.

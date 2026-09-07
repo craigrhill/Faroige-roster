@@ -37,11 +37,24 @@
     <div id="callout" class="banner" hidden></div>
 
     <h1>Who is covering what</h1>
-    <p class="muted">The club nights and events coming up. Put yourself down for the ones you can do, first come first served: once a night has the leaders it needs, it closes. A club night is only covered when one of them holds <span data-training-label>the training</span>, so a place is held for that until somebody takes it. Events are away from the building and just need the leaders.</p>
+    <p class="muted">Put yourself down for what you can do. First come, first served: a night closes once it has the leaders it needs, and a place is held on club nights for somebody with <span data-training-label>the training</span>.</p>
     <div class="chips" id="chips" hidden></div>
 
-    <div class="card"><h2>Gaps</h2><div class="gaps" id="gaps"></div></div>
-    <div class="card"><h2>Upcoming</h2><div id="slots"></div></div>
+    <div class="tabs" id="tabs" role="tablist" onkeydown="tabKey(event)">
+      <button role="tab" id="tab-gaps" aria-controls="pane-gaps" data-tab="gaps" onclick="setTab('gaps')">Gaps<span class="tally" id="tallyGaps"></span></button>
+      <button role="tab" id="tab-avail" aria-controls="pane-avail" data-tab="avail" onclick="setTab('avail')">Availability</button>
+      <button role="tab" id="tab-mine" aria-controls="pane-mine" data-tab="mine" onclick="setTab('mine')">My calendar<span class="tally" id="tallyMine"></span></button>
+    </div>
+
+    <div class="tabpane" role="tabpanel" aria-labelledby="tab-gaps" id="pane-gaps">
+      <div class="card"><h2>Still short</h2><div class="gaps" id="gaps"></div></div>
+    </div>
+    <div class="tabpane" role="tabpanel" aria-labelledby="tab-avail" id="pane-avail" hidden>
+      <div class="card"><h2>Every night</h2><div id="slots"></div></div>
+    </div>
+    <div class="tabpane" role="tabpanel" aria-labelledby="tab-mine" id="pane-mine" hidden>
+      <div class="card"><h2>Nights you are on</h2><p class="small muted" id="mineNote"></p><div id="mines"></div></div>
+    </div>
 
     <div class="card" id="shareCard" hidden>
       <h2>Links to share</h2>
@@ -51,11 +64,32 @@
     </div>
   </section>
 </main>
-<footer class="wrap">Nothing on this page is public. Codes are personal: do not share yours.</footer>
+<footer class="wrap">Nothing on this page is public. Your link is personal: do not pass it on.</footer>
 
 <script src="rota-lib.js"></script>
 <script>
-const SK = "foroige-section";
+const SK = "foroige-section", TABK = "foroige-tab";
+let TAB = "gaps";
+try { TAB = ["gaps", "avail", "mine"].includes(localStorage.getItem(TABK)) ? localStorage.getItem(TABK) : "gaps"; } catch {}
+const TABS = ["gaps", "avail", "mine"];
+function setTab(t, focus){
+  TAB = t; try { localStorage.setItem(TABK, t); } catch {}
+  for (const name of TABS) {
+    $("pane-" + name).hidden = name !== t;
+    const b = $("tab-" + name);
+    b.classList.toggle("on", name === t); b.setAttribute("aria-selected", String(name === t));
+    // Only the open tab takes a Tab press, the way a tablist is meant to work:
+    // the arrow keys move between them.
+    b.tabIndex = name === t ? 0 : -1;
+  }
+  if (focus) $("tab-" + t).focus();
+}
+function tabKey(e){
+  const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!step) return;
+  e.preventDefault();
+  setTab(TABS[(TABS.indexOf(TAB) + step + TABS.length) % TABS.length], true);
+}
 const DAYS = { sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
 let C = null, D = null;
 function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
@@ -136,6 +170,7 @@ function render(){
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
   $("rosterLink").hidden = !me.secretary;
   $("shareCard").hidden = !boss;
+  setTab(TAB);
   if (boss) for (const [id, q] of [["gapsLink", "?gaps"], ["calLink", ""]]) { const u = pageLink("events", q); $(id).textContent = u; $(id).href = u; }
   const many = C.settings.sections.length > 1;
   $("chips").hidden = !many;
@@ -166,10 +201,12 @@ function render(){
   $("gaps").innerHTML = (live.length
       ? `<div class="gap ${bad.length ? "warn" : "ok"}"><span>${live.length - bad.length} of ${live.length} covered${noTrained ? `, ${noTrained} with leaders but nobody trained` : ""}</span><span class="count">${sect.required} needed, ${sect.requiredTrained} trained</span></div>`
       : "")
-    + (bad.map(o => `<div class="gap${!boss && placeForMe(k, o.x.id) === "can" ? " open" : ""}"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
-      || (live.length ? "" : `<div class="empty">No dates yet. They go in rota-config.json once they are confirmed.</div>`));
+    + (bad.map(o => { const can = !boss && placeForMe(k, o.x.id) === "can";
+        return `<div class="gap${can ? " open" : ""}"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span>${can ? `<button class="btn primary tiny" onclick="tick('${esc(k)}','${esc(o.x.id)}','${esc(me.id)}',true)">I can do it</button>` : ""}</div>`; }).join("")
+      || (live.length ? `<div class="empty">Nothing is short. Every night has who it needs.</div>` : `<div class="empty">No dates yet. They go in rota-config.json once they are confirmed.</div>`));
+  $("tallyGaps").textContent = bad.length || "";
 
-  $("slots").innerHTML = slots.map(x => {
+  const slotCard = (x) => {
     const st = state(k, x.id), s = st.s;
     const custom = entryOf(x.id).need > 0 || Number.isFinite(entryOf(x.id).needTrained);
     const off = offOf(x.id);
@@ -209,8 +246,19 @@ function render(){
         ${st.n && !off && st.needT ? `<span>${st.t} trained on it</span>` : ""}
       </div>
     </div>`;
-  }).join("") || `<div class="empty">Nothing coming up.</div>`;
+  };
 
+  $("slots").innerHTML = slots.map(slotCard).join("") || `<div class="empty">Nothing coming up.</div>`;
+
+  // My calendar: the nights this person is actually down for, and going ahead.
+  // A night called off is not one of theirs to plan around.
+  const mineList = slots.filter(x => !offOf(x.id) && slotOf(k, x.id).who.includes(me.id));
+  $("tallyMine").textContent = mineList.length || "";
+  $("mineNote").textContent = mineList.length
+    ? `${mineList.length} night${mineList.length === 1 ? "" : "s"} between now and the end of the term. Anything called off is left out.`
+    : "";
+  $("mines").innerHTML = mineList.map(slotCard).join("")
+    || `<div class="empty">You are not down for anything yet. Availability is where you put yourself on a night.</div>`;
 }
 async function load(){ showErr(""); D = await api("GET", "?sections=" + keys().join(",")); $("gate").hidden = true; $("app").hidden = false; render(); }
 // On a rejected change, put the inputs back to what the server actually holds.

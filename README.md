@@ -19,9 +19,9 @@ the club asks for.
 
 ## The three pages
 
-    rota.html     for the club: the nights coming up, who is on them, and
-                  where the gaps are. Also where the coordinator overrides
-                  what self service has produced
+    rota.html     for the club, in three tabs: Gaps, Availability, and My
+                  calendar. Also where the coordinator overrides what self
+                  service has produced
     roster.html   the coordinator's: the roster, the calendar, the numbers
     events.html   public. No sign-in and no names on it
 
