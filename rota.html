@@ -118,7 +118,7 @@ function render(){
 
   // With several clubs a person covers the ones the coordinator ticked. With
   // one club there is nothing to tick, so everyone on the roster covers it.
-  const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byName);
+  const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byTrainedThenName);
   const live = slots.filter(x => !slotOf(k, x.id).off);
   const bad = live.map(x => ({ x, st: state(k, x.id) })).filter(o => !o.st.ok);
   // Worth calling out separately: nights that have the leaders but nobody trained.
@@ -137,6 +137,7 @@ function render(){
       : st.shortPeople ? `<span class="status gap">${st.n} of ${st.need}</span>`
       : `<span class="status warn">No ${esc(TRAIN.short)}</span>`;
     const listed = [...names]; s.who.forEach(id => { if (!listed.some(p => p.id === id)) { const p = personById(id); if (p) listed.push(p); } });
+    listed.sort(byTrainedThenName);
     const boxes = listed.map(p => { const on = s.who.includes(p.id), can = lead || p.id === me.id;
       return `<label class="${p.id === me.id ? "me" : ""} ${can ? "" : "locked"}"><input type="checkbox" ${on ? "checked" : ""} ${can ? "" : "disabled"} onchange="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',this.checked)">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}</label>`; }).join("");
     return `<div class="slot">

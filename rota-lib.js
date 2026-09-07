@@ -41,6 +41,9 @@ async function loadContent(){
 const trainedTag = p => p.trained ? `<span class="tag" title="${esc(TRAIN.label)}">${esc(TRAIN.short)}</span>` : "";
 const roleText = me => [me.secretary && "coordinator", me.lead && "club leader"].filter(Boolean).join(", ");
 const byName = (a, b) => a.name.localeCompare(b.name, "en-IE");
+// On the rota, the people who can open the building come first: a night is not
+// covered without one of them, so they are the ones being looked for.
+const byTrainedThenName = (a, b) => (!!b.trained - !!a.trained) || byName(a, b);
 
 function showCode(name, code){
   $("codeBox").innerHTML = `<b>Code for ${esc(name)}</b><br><span class="code" id="codeText">${esc(code)}</span><br><span class="small">Send it to them now. It is shown only once; use New code if it is lost.</span> <button class="btn" onclick="copyCode()">Copy</button> <button class="btn quiet" onclick="$('codeBox').hidden=true">Close</button>`;
