@@ -25,8 +25,9 @@
 //
 // Keys in the store:
 //   secret          HMAC key, generated on first use, never leaves the server
-//   admin-tries     wrong tries at signing in, when it reopens, and how many
-//                   times it has had to shut
+//   admin-tries     wrong tries at signing in, when it reopens, how many
+//                   times it has shut, and the deploy that was live at the
+//                   time: a newer one means start again
 //   roster          { people: [{ id, name, sections, trained, secretary, codeHash }] }
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
 //                                 details, need, needTrained, off }] }
@@ -55,8 +56,8 @@
 //                        no code and no link. It makes her the coordinator if
 //                        she is not one already, which is also how the first
 //                        one is made and how a lost one is recovered.
-//                        Five wrong tries shuts it, for a minute, then five,
-//                        then fifteen if it keeps happening.
+//                        Fifteen wrong tries shuts it, for five minutes, then
+//                        fifteen, then an hour. A deploy clears it.
 //   POST   ?a=login                        {code}   { token, me }
 //   POST   ?a=slot     {section,id,add?,remove?}                 { section }
 //   POST   ?a=required {section,required?,requiredTrained?,requiredTrainedEvents?}
@@ -78,11 +79,15 @@ const MAX_BULK = 100;              // names accepted in one paste
 // First-time setup is the one door a password opens, so it is the one worth
 // guessing at. Five wrong tries and it shuts for a quarter of an hour, which
 // turns even a four digit password from minutes of guessing into weeks of it.
-// The first lock is short, because the person hitting it is almost always the
-// coordinator fumbling her own password rather than anyone attacking. They
-// lengthen if it keeps happening, which costs an attacker the same number of
-// guesses an hour as a flat quarter of an hour did.
-const ADMIN_TRIES = 5, ADMIN_LOCKS = [1, 5, 15];
+// Fifteen goes before anything happens, because the person getting it wrong is
+// almost always the coordinator and not an attacker. If fifteen were not
+// enough, a sixteenth was never going to help, so the shuttings that follow
+// are long: they settle at fifteen guesses an hour, which is slower than five
+// tries and a quarter of an hour ever was.
+const ADMIN_TRIES = 15, ADMIN_LOCKS = [5, 15, 60];
+// A deploy clears it. Only whoever owns the site can deploy, so this is a
+// reset lever the coordinator has and an attacker does not.
+const deployId = () => process.env.DEPLOY_ID || process.env.COMMIT_REF || "";
 const headers = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -221,11 +226,16 @@ export function createHandler(storeFactory) {
       // Unauthenticated entry points.
       if (req.method === "POST" && a === "admin-login") {
         if (!adminPw()) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
-        const guard = await readDoc(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }));
-        const waitMs = (guard.doc.until || 0) - Date.now();
+        const fresh = () => ({ fails: 0, until: 0, locks: 0, deploy: deployId() });
+        const guard = await readDoc(store, "admin-tries", fresh);
+        // Redeployed since the last wrong try: start again.
+        const stale = deployId() && guard.doc.deploy !== deployId();
+        const waitMs = stale ? 0 : (guard.doc.until || 0) - Date.now();
         if (waitMs > 0) return fail(429, `Too many wrong tries. Signing in is shut for another ${Math.ceil(waitMs / 60000)} minute${Math.ceil(waitMs / 60000) === 1 ? "" : "s"}.`);
         if (!adminOk(req)) {
-          await update(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }), (d) => {
+          await update(store, "admin-tries", fresh, (d) => {
+            if (deployId() && d.deploy !== deployId()) { d.fails = 0; d.until = 0; d.locks = 0; }
+            d.deploy = deployId();
             d.fails = (d.fails || 0) + 1;
             if (d.fails >= ADMIN_TRIES) {
               d.until = Date.now() + ADMIN_LOCKS[Math.min(d.locks || 0, ADMIN_LOCKS.length - 1)] * 60000;
@@ -237,7 +247,7 @@ export function createHandler(storeFactory) {
           await new Promise((r) => setTimeout(r, 250));
           return fail(401, "Wrong password.");
         }
-        await update(store, "admin-tries", () => ({ fails: 0, until: 0, locks: 0 }), (d) => (d.fails || d.until || d.locks ? { fails: 0, until: 0, locks: 0 } : false));
+        await update(store, "admin-tries", fresh, (d) => (d.fails || d.until || d.locks ? fresh() : false));
         const b = await body(req); const name = cleanName(b && b.name);
         if (!name) return fail(400, "A name is needed.");
         let person, created = false;

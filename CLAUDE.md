@@ -56,7 +56,7 @@ advisory: the function never refuses a tick for going over them.
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 136 cases
+    tools/test-foroige.mjs  offline harness, 138 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -196,12 +196,19 @@ this up?" with the admin password. The API is documented at the top of
   setup returns 503 saying so, which is the safe way round for a public repo.
   Never put the password, or a hash of it, in this repo: it is public, and a
   hash of anything short is the password.
-* **Signing in is throttled.** Five wrong passwords and it answers 429: for a
-  minute, then five, then fifteen if it keeps happening. Counted in the store
-  under `admin-tries` so it holds across function instances, and wiped by a
-  correct password. The escalation matters because the person who hits this
-  is almost always the coordinator fumbling her own password, not an
-  attacker, and it costs an attacker the same guesses an hour either way.
+* **Signing in is throttled.** Fifteen wrong passwords and it answers 429:
+  for five minutes, then fifteen, then an hour. Counted in the store under
+  `admin-tries` so it holds across function instances, and wiped by a correct
+  password. Fifteen goes because the person who hits this is almost always
+  the coordinator, not an attacker; long shuttings after because if fifteen
+  were not enough the sixteenth was never going to help. It settles at
+  fifteen guesses an hour, slower than five tries and a quarter hour was.
+* **A deploy clears the lock.** The guard records the deploy that was live
+  when it was last written, and a newer one starts the count again. Only
+  whoever owns the site can deploy, so it is a reset lever the coordinator
+  has and somebody guessing does not. It reads `DEPLOY_ID`, falling back to
+  `COMMIT_REF`; with neither set the guard simply persists, which is what
+  happens under the local preview and the harness.
 * **The password is trimmed at both ends before comparing.** A value pasted
   into Netlify with a trailing space or newline looks identical in their UI
   and would refuse the right password for ever, with nothing at all to see.

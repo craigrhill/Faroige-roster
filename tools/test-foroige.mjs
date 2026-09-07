@@ -26,12 +26,12 @@ process.env.ADMIN_PASSWORD = "admin-for-test";
 r = await call("OPTIONS", "");                              ok("OPTIONS is 204", r.status, 204);
 r = await call("GET", "?sections=club");                    ok("GET without token is 401", r.status, 401);
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } }); ok("the wrong password is 401", r.status, 401);
-// Five wrong tries and it shuts, so a short password is not worth guessing.
-for (let i = 0; i < 3; i++) await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
+// Fifteen wrong tries and it shuts, so a short password is not worth guessing.
+for (let i = 0; i < 13; i++) await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
-ok("the fifth wrong try is the last one allowed", r.status, 401);
+ok("the fifteenth wrong try is the last one allowed", r.status, 401);
 r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
-ok("after that it is shut, and the first shutting is a short one", [r.status, /shut for another 1 minute\b/.test(r.j.error)], [429, true]);
+ok("after that it is shut, for five minutes to begin with", [r.status, /shut for another 5 minutes/.test(r.j.error)], [429, true]);
 r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord" } });
 ok("and the right password is turned away too while it is shut", r.status, 429);
 const reopen = () => { const g = JSON.parse(store._map.get("admin-tries").value); g.until = Date.now() - 1; store._map.set("admin-tries", { value: JSON.stringify(g), etag: "reopen" + Math.random() }); };
@@ -41,12 +41,20 @@ ok("once the wait is over it opens again", r.status, 401);
 // Keep getting it wrong and the shuttings lengthen. All wrong on purpose: a
 // success here would create people and knock every later case off its footing.
 // Keep going wrong until it shuts, however many that takes from here.
-const untilShut = async () => { let x; for (let i = 0; i < 9; i++) { x = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } }); if (x.status === 429) break; } return x; };
+const untilShut = async () => { let x; for (let i = 0; i < 20; i++) { x = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } }); if (x.status === 429) break; } return x; };
 r = await untilShut();
-ok("a second shutting lasts five minutes", [r.status, /shut for another 5 minutes/.test(r.j.error)], [429, true]);
+ok("a second shutting lasts fifteen minutes", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
 reopen();
 r = await untilShut();
-ok("and a third, fifteen", [r.status, /shut for another 15 minutes/.test(r.j.error)], [429, true]);
+ok("and a third, an hour", [r.status, /shut for another 60 minutes/.test(r.j.error)], [429, true]);
+// Only the person who owns the site can deploy, so a deploy is a reset lever
+// the coordinator has and nobody guessing does.
+process.env.DEPLOY_ID = "deploy-two";
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
+ok("a deploy clears the shutting, even mid-lock", [r.status, r.j.error], [401, "Wrong password."]);
+r = await call("POST", "?a=admin-login", { admin: "wrong", body: { name: "Coord" } });
+ok("and it starts counting from one again, not from where it left off", r.status, 401);
+delete process.env.DEPLOY_ID;
 reopen();
 r = await call("POST", "?a=admin-login", { admin: "admin-for-test", body: { name: "Coord", sections: ["club"] } });
 ok("her name and the password make the coordinator, in the club", [r.status, r.j.me.secretary, r.j.me.sections, r.j.created], [200, true, ["club"], true]);
