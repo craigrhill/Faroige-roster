@@ -17,10 +17,12 @@
 </div></header>
 <main class="wrap">
   <div id="err" class="banner err" hidden></div>
-  <h1 id="title">What is on</h1>
-  <p class="muted" id="intro"></p>
+  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:1rem">
+    <div><h1 id="title">What is on</h1><p class="muted" id="intro"></p></div>
+    <button class="btn quiet noprint" onclick="window.print()">Print</button>
+  </div>
   <div id="callout" class="banner" hidden></div>
-  <div class="card"><div id="list"></div></div>
+  <div id="list"></div>
 </main>
 <footer class="wrap" id="foot"></footer>
 
@@ -57,6 +59,12 @@ function needTOf(e){
   const def = e.kind === "e" ? D.requiredTrainedEvents : D.requiredTrained;
   return Math.min(Number.isFinite(e.needTrained) ? e.needTrained : def, needOf(e));
 }
+// The badge earns its place only when the name does not already say it: a
+// night called "Club night" does not need CLUB NIGHT beside it.
+function kindBadge(e){
+  const label = e.kind === "m" ? "Club night" : "Event";
+  return e.title.trim().toLowerCase() === label.toLowerCase() ? "" : `<span class="badge">${label}</span>`;
+}
 function statusOf(e){
   if (e.off) return { cls: "off", text: "Called off" };
   const short = needOf(e) - e.on, shortT = needTOf(e) - e.trained;
@@ -90,23 +98,39 @@ function render(){
   }
 
   let month = "";
-  $("list").innerHTML = list.map(e => {
+  $("list").innerHTML = list.map((e, i) => {
     const st = statusOf(e), head = MONTH(e.date);
     const rule = head !== month ? `<h2 class="month">${esc(head)}</h2>` : "";
     month = head;
+    const d = new Date(e.date + "T12:00:00");
     const where = e.kind === "e" ? e.location : (e.location || section.venue);
-    const sub = [e.kind === "m" ? section.time : "", where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
-    return `${rule}<div class="slot${e.off ? " isoff" : ""}">
-      <div class="slot-head"><div><span class="when">${esc(fmt(e.date))}</span> <span class="sub">${esc(e.title)}${sub ? ", " + esc(sub) : ""}</span></div>${GAPS || e.off ? `<span class="status ${st.cls}">${esc(st.text)}</span>` : ""}</div>
-      ${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}
-    </div>`;
-  }).join("") || `<div class="empty">Nothing coming up yet.</div>`;
+    // The line under the name: when it runs, then when in the evening, then
+    // where. Whichever of those is known.
+    const span = e.endDate ? `${d.getDate()} ${d.toLocaleDateString("en-IE", { month: "short" })} to ${fmt(e.endDate).replace(/^\w+, /, "")}`
+      : d.toLocaleDateString("en-IE", { weekday: "long" });
+    const sub = [span, e.kind === "m" ? section.time : "", where].filter(Boolean).join(" &middot; ");
+    const more = e.details || (GAPS && st.short);
+    return `${rule}<article class="ev${e.off ? " isoff" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
+      <div class="evdate"><b>${d.getDate()}</b><span>${esc(d.toLocaleDateString("en-IE", { month: "short" }).toUpperCase())}</span></div>
+      <div class="evbody">
+        <h3 class="evtitle">${esc(e.title)} ${kindBadge(e)}${e.off ? `<span class="badge off">Called off</span>` : ""}</h3>
+        <p class="evsub">${sub}</p>
+        <div class="evmore" hidden>${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}${GAPS && st.short ? `<p class="detail">Still needs ${st.text.replace(/^Needs /, "")}. Tell the club if you can take it.</p>` : ""}</div>
+      </div>
+      ${GAPS && !e.off ? `<span class="status ${st.cls}">${esc(st.text)}</span>` : ""}
+      ${more ? `<span class="chev" aria-hidden="true">&rsaquo;</span>` : ""}
+    </article>`;
+  }).join("") || `<div class="card"><div class="empty">Nothing coming up yet.</div></div>`;
 
   $("foot").textContent = GAPS
     ? "No names are on this page. Share it freely."
     : "Dates can change. This page is kept up to date by the club.";
 }
 
+function openEv(el){
+  const box = el.querySelector(".evmore"), open = !box.hidden;
+  box.hidden = open; el.classList.toggle("open", !open); el.setAttribute("aria-expanded", String(!open));
+}
 async function boot(){
   try {
     C = await loadContent();

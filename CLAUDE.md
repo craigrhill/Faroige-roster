@@ -102,6 +102,12 @@ dates and **counts**: how many are on a night and how many of those are
 trained. No names, no ids, no roster, no slots. That is the whole reason it
 can be public, so keep anything personal out of it.
 
+Each night is a card: the date read at a glance on the left, the name and a
+line of when and where beside it, and a badge for the kind unless the name
+already says it. Anything with more to say opens on a tap, so the page stays
+scannable. It prints: the toolbar and the chevrons go, and everything that
+opens is opened.
+
 One page, two readings, on the same data:
 
 * plain, it is the calendar for parents: what is on, where, and the line of
