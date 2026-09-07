@@ -18,7 +18,9 @@
 //              is on, when, whether it is called off, and how many leaders it
 //              needs. On roster.html.
 //   lead       the club leader. Puts anyone on a night, and is not held to
-//              the numbers. On rota.html.
+//              the numbers. On rota.html. The coordinator can do the same:
+//              the rota is where either of them overrides what self service
+//              has produced.
 //   (neither)  a leader: puts themselves on a night while there is a place
 //              for them. First come, first served.
 // While no coordinator exists yet, club leaders hold the coordinator's powers
@@ -47,6 +49,7 @@
 //
 // API (all JSON; auth by the x-rota-token header):
 //   OPTIONS                                         204
+//   GET    ?a=public&section=k   (no token)         { required, ..., entries }
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
 //   POST   ?a=bootstrap  x-admin-password  {name,sections}  { person, code }  first coordinator
 //   POST   ?a=login                        {code}   { token, me }
@@ -176,6 +179,28 @@ export function createHandler(storeFactory) {
       const store = storeFactory();
       const sec = await secret(store);
 
+      // The parents' calendar, and the link for chasing volunteers. Open to
+      // anyone who has the address. It carries what is on and how short each
+      // night is, as numbers. No names, no ids, nothing about who: that is
+      // the whole reason it can be public at all.
+      if (req.method === "GET" && a === "public") {
+        const k = url.searchParams.get("section") || "";
+        if (!isKey(k)) return fail(400, "Bad club.");
+        const [{ doc: sect }, { doc: cal }] = [await readDoc(store, "section/" + k, sectionFallback), await readDoc(store, "calendar", calendarFallback)];
+        const people = (await readDoc(store, "roster", rosterFallback)).doc.people;
+        const trainedIds = new Set(people.filter((p) => p.trained).map((p) => p.id));
+        const known = new Set(people.map((p) => p.id));
+        const entries = (cal.entries || []).map((e) => {
+          const on = ((sect.slots[e.kind + ":" + e.id] || {}).who || []).filter((id) => known.has(id));
+          return { kind: e.kind, date: e.date, endDate: e.endDate || null, title: e.title,
+            location: e.location || "", details: e.details || "", off: !!e.off,
+            need: e.need ?? null, needTrained: e.needTrained ?? null,
+            on: on.length, trained: on.filter((id) => trainedIds.has(id)).length };
+        });
+        return json(200, { required: sect.required, requiredTrained: sect.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
+          requiredTrainedEvents: sect.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS, entries });
+      }
+
       // Unauthenticated entry points.
       if (req.method === "POST" && a === "bootstrap") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
@@ -237,7 +262,10 @@ export function createHandler(storeFactory) {
         // A night's numbers, and whether it is on at all, belong to the night
         // itself: they are set on the calendar and are not taken here.
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
+        // The rota is where the club leader and the coordinator override what
+        // self service has left them with.
+        const boss = me.lead || canManage;
+        if (!boss && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
         // A night fills up and then closes: that is what makes it first come,
         // first served. Two things stop it deadlocking. A place is held for
         // someone trained while the night still needs one, so the last seat
@@ -250,7 +278,7 @@ export function createHandler(storeFactory) {
         let refused = null;
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
-          if (!me.lead && add.includes(me.id) && !s.who.includes(me.id)) {
+          if (!boss && add.includes(me.id) && !s.who.includes(me.id)) {
             const need = entry.need > 0 ? entry.need : d.required;
             const defT = b.id.startsWith("e:") ? (d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS) : (d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED);
             const needT = Math.min(Number.isFinite(entry.needTrained) ? entry.needTrained : defT, need);

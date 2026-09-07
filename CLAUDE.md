@@ -49,13 +49,14 @@ advisory: the function never refuses a tick for going over them.
 ## Layout
 
     rota.html               coverage, everyone. No settings: see above
+    events.html             the public page. No sign-in, no names
     roster.html             the coordinator's page, including bulk add
     rota-lib.js             shared sign-in, API calls, config loading
     rota.css                shared styles
     rota-config.json        the club, its nights, its events, the training
     netlify/src/foroige.mjs the function, edit this one
     netlify/functions/      built by `npm run build:function`, never edit
-    tools/test-foroige.mjs  offline harness, 109 cases
+    tools/test-foroige.mjs  offline harness, 120 cases
     tools/serve.mjs         local preview, real function, in-memory store
 
 ## The calendar
@@ -86,6 +87,26 @@ action per entry. It is a short list, the page holds it while it is being
 edited, and one write keeps the etag guard meaningful: two coordinators
 editing together conflict and retry rather than interleaving halves.
 
+## The public page
+
+`events.html` is open to anyone with the address and reads
+`GET ?a=public&section=<key>`, which takes no token. That endpoint returns
+dates and **counts**: how many are on a night and how many of those are
+trained. No names, no ids, no roster, no slots. That is the whole reason it
+can be public, so keep anything personal out of it.
+
+One page, two readings, on the same data:
+
+* plain, it is the calendar for parents: what is on, where, and the line of
+  description. No coverage at all, not even the summary banner. A parent
+  neither needs to know the club is short nor can do anything about it.
+* `?gaps` adds a "Needs 2 more" against each night and the summary. That is
+  the link to send when chasing leaders.
+
+Both links are on the rota page for a club leader or the coordinator, under
+Links to share, built by `pageLink()` so they work whether Netlify is serving
+the pages pretty (`/events`) or as files.
+
 ## Signing in, and first come first served
 
 **Nobody types a code.** A person's code is handed out as a link,
@@ -98,6 +119,11 @@ The code box on the gate still works for anyone who has only the code.
 Both pages carry `<meta name="referrer" content="no-referrer">`. Without it
 the Google Fonts request would carry the whole URL, code and all, in the
 Referer header.
+
+**The rota is where the overriding happens.** A club leader *or the
+coordinator* gets the pull-downs, can put anyone on or take them off, and is
+not held to the numbers. In the page that is the `lead` variable in
+`render()`, which is `me.lead || me.secretary`; in the function it is `boss`.
 
 **A night fills up and then closes.** Anyone puts themselves on while there
 is a place; once there is not, the button is gone and `?a=slot` answers 409.

@@ -34,12 +34,21 @@
       <span><a id="rosterLink" class="btn quiet" href="roster.html" hidden>Roster</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
     </div>
 
+    <div id="callout" class="banner" hidden></div>
+
     <h1>Who is covering what</h1>
     <p class="muted">The club nights and events coming up. Put yourself down for the ones you can do, first come first served: once a night has the leaders it needs, it closes. A club night is only covered when one of them holds <span data-training-label>the training</span>, so a place is held for that until somebody takes it. Events are away from the building and just need the leaders.</p>
     <div class="chips" id="chips" hidden></div>
 
     <div class="card"><h2>Gaps</h2><div class="gaps" id="gaps"></div></div>
     <div class="card"><h2>Upcoming</h2><div id="slots"></div></div>
+
+    <div class="card" id="shareCard" hidden>
+      <h2>Links to share</h2>
+      <p class="small muted">Neither asks anyone to sign in, and neither carries a name: only dates and how short a night is.</p>
+      <div class="share"><b>Chasing leaders</b><a class="link" id="gapsLink" href="#"></a><button class="btn" onclick="copyShare('gapsLink')">Copy</button></div>
+      <div class="share"><b>What is on, for parents</b><a class="link" id="calLink" href="#"></a><button class="btn" onclick="copyShare('calLink')">Copy</button></div>
+    </div>
   </section>
 </main>
 <footer class="wrap">Nothing on this page is public. Codes are personal: do not share yours.</footer>
@@ -121,9 +130,13 @@ function reason(st){
 }
 
 function render(){
-  const k = sec(), me = D.me, lead = !!me.lead, sect = D.sections[k] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, slots: {} };
+  // The rota is where a club leader or the coordinator overrides what self
+  // service has left behind: either of them puts anyone on or takes them off.
+  const k = sec(), me = D.me, lead = !!me.lead || !!me.secretary, sect = D.sections[k] || { required: 3, requiredTrained: 1, requiredTrainedEvents: 0, slots: {} };
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
   $("rosterLink").hidden = !me.secretary;
+  $("shareCard").hidden = !lead;
+  if (lead) for (const [id, q] of [["gapsLink", "?gaps"], ["calLink", ""]]) { const u = pageLink("events", q); $(id).textContent = u; $(id).href = u; }
   const many = C.settings.sections.length > 1;
   $("chips").hidden = !many;
   if (many) $("chips").innerHTML = C.settings.sections.map(x => `<button class="chip ${x.key === k ? "on" : ""}" onclick="pick('${esc(x.key)}')">${esc(x.name)}</button>`).join("");
@@ -134,10 +147,26 @@ function render(){
   const bad = live.map(x => ({ x, st: state(k, x.id) })).filter(o => !o.st.ok);
   // Worth calling out separately: nights that have the leaders but nobody trained.
   const noTrained = bad.filter(o => o.st.shortTrained && !o.st.shortPeople).length;
+  // What the person who just opened their link most needs to know.
+  const openToMe = lead ? 0 : live.filter(x => placeForMe(k, x.id) === "can").length;
+  const call = $("callout");
+  if (!live.length) call.hidden = true;
+  else {
+    call.hidden = false;
+    call.className = "banner" + (bad.length ? "" : " good");
+    call.innerHTML = !bad.length
+      ? `<b>Every night is covered.</b> Nothing needed from you.`
+      : lead
+        ? `<b>${bad.length} of ${live.length} still short.</b> ${noTrained ? `${noTrained} of those ${noTrained === 1 ? "has" : "have"} the leaders but nobody with ${esc(TRAIN.short)}. ` : ""}Put people on below, or chase them with the sharing link at the foot of this page.`
+        : openToMe
+          ? `<b>${bad.length} night${bad.length === 1 ? "" : "s"} still short.</b> You can take ${openToMe === bad.length ? (openToMe === 1 ? "it" : "any of them") : openToMe + " of them"}, marked below.`
+          : `<b>${bad.length} night${bad.length === 1 ? "" : "s"} still short</b>, but none that you can take: they are either full or waiting on someone with ${esc(TRAIN.short)}.`;
+  }
+
   $("gaps").innerHTML = (live.length
       ? `<div class="gap ${bad.length ? "warn" : "ok"}"><span>${live.length - bad.length} of ${live.length} covered${noTrained ? `, ${noTrained} with leaders but nobody trained` : ""}</span><span class="count">${sect.required} needed, ${sect.requiredTrained} trained</span></div>`
       : "")
-    + (bad.map(o => `<div class="gap"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
+    + (bad.map(o => `<div class="gap${!lead && placeForMe(k, o.x.id) === "can" ? " open" : ""}"><span>${esc(fmt(o.x.date))}, ${esc(o.x.title)}</span><span class="count">${esc(reason(o.st))}</span></div>`).join("")
       || (live.length ? "" : `<div class="empty">No dates yet. They go in rota-config.json once they are confirmed.</div>`));
 
   $("slots").innerHTML = slots.map(x => {
@@ -168,7 +197,7 @@ function render(){
     const controls = lead
       ? `<div class="picks">${picker(TRAIN.label, free.filter(p => p.trained))}${picker("Other leaders", free.filter(p => !p.trained))}</div>`
       : `<div class="picks">${mine}</div>`;
-    return `<div class="slot">
+    return `<div class="slot${off ? "" : place === "can" ? " open" : !st.ok ? " short" : ""}">
       <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
       ${x.details ? `<p class="detail">${esc(x.details)}</p>` : ""}
       ${off ? "" : `<div class="who">
@@ -189,6 +218,7 @@ async function guarded(fn){ try { await fn(); } catch (e) { showErr(e.message); 
 function pick(k){ try { localStorage.setItem(SK, k); } catch {} render(); }
 function putSection(k, doc){ D.sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained, requiredTrainedEvents: doc.requiredTrainedEvents, slots: doc.slots, updatedAt: doc.updatedAt }; render(); }
 const tick = (k, id, pid, on) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, [on ? "add" : "remove"]: [pid] })).section));
+async function copyShare(id){ try { await navigator.clipboard.writeText($(id).textContent); } catch {} }
 function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){

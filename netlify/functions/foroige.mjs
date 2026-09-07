@@ -934,6 +934,36 @@ function createHandler(storeFactory) {
     try {
       const store = storeFactory();
       const sec = await secret(store);
+      if (req.method === "GET" && a === "public") {
+        const k = url.searchParams.get("section") || "";
+        if (!isKey(k)) return fail(400, "Bad club.");
+        const [{ doc: sect }, { doc: cal }] = [await readDoc(store, "section/" + k, sectionFallback), await readDoc(store, "calendar", calendarFallback)];
+        const people = (await readDoc(store, "roster", rosterFallback)).doc.people;
+        const trainedIds = new Set(people.filter((p) => p.trained).map((p) => p.id));
+        const known = new Set(people.map((p) => p.id));
+        const entries = (cal.entries || []).map((e) => {
+          const on = ((sect.slots[e.kind + ":" + e.id] || {}).who || []).filter((id) => known.has(id));
+          return {
+            kind: e.kind,
+            date: e.date,
+            endDate: e.endDate || null,
+            title: e.title,
+            location: e.location || "",
+            details: e.details || "",
+            off: !!e.off,
+            need: e.need ?? null,
+            needTrained: e.needTrained ?? null,
+            on: on.length,
+            trained: on.filter((id) => trainedIds.has(id)).length
+          };
+        });
+        return json(200, {
+          required: sect.required,
+          requiredTrained: sect.requiredTrained ?? DEFAULT_REQUIRED_TRAINED,
+          requiredTrainedEvents: sect.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS,
+          entries
+        });
+      }
       if (req.method === "POST" && a === "bootstrap") {
         if (!process.env.ADMIN_PASSWORD) return fail(503, "No admin password is set for this site. Set ADMIN_PASSWORD in Netlify, scoped to Functions, then redeploy.");
         if (!adminOk(req)) return fail(401, "Wrong password.");
@@ -1003,14 +1033,15 @@ function createHandler(storeFactory) {
         const add = Array.isArray(b.add) ? b.add : [], remove = Array.isArray(b.remove) ? b.remove : [];
         if ([...add, ...remove].some((id) => !known.has(id))) return fail(400, "Unknown person.");
         if ("need" in b || "needTrained" in b || "off" in b) return fail(403, "Whether a night is on, and how many it needs, are set on the calendar by the coordinator.");
-        if (!me.lead && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
+        const boss = me.lead || canManage;
+        if (!boss && [...add, ...remove].some((id) => id !== me.id)) return fail(403, "You can only put yourself on a night.");
         const cal = await readDoc(store, "calendar", calendarFallback);
         const entry = (cal.doc.entries || []).find((e) => b.id === e.kind + ":" + e.id) || {};
         const trainedIds = new Set(roster.doc.people.filter((p) => p.trained).map((p) => p.id));
         let refused = null;
         const doc = await update(store, "section/" + b.section, sectionFallback, (d) => {
           const s = d.slots[b.id] = d.slots[b.id] || { who: [] };
-          if (!me.lead && add.includes(me.id) && !s.who.includes(me.id)) {
+          if (!boss && add.includes(me.id) && !s.who.includes(me.id)) {
             const need = entry.need > 0 ? entry.need : d.required;
             const defT = b.id.startsWith("e:") ? d.requiredTrainedEvents ?? DEFAULT_REQUIRED_TRAINED_EVENTS : d.requiredTrained ?? DEFAULT_REQUIRED_TRAINED;
             const needT = Math.min(Number.isFinite(entry.needTrained) ? entry.needTrained : defT, need);

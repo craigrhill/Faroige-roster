@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>What is on: Foroige club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="rota.css">
+</head>
+<body>
+<header class="appbar"><div class="wrap">
+  <div class="brand"><span data-club-name>Foroige club</span><small id="strap">What is on</small></div>
+  <span class="pill" id="mode" hidden>Helpers needed</span>
+</div></header>
+<main class="wrap">
+  <div id="err" class="banner err" hidden></div>
+  <h1 id="title">What is on</h1>
+  <p class="muted" id="intro"></p>
+  <div id="callout" class="banner" hidden></div>
+  <div class="card"><div id="list"></div></div>
+</main>
+<footer class="wrap" id="foot"></footer>
+
+<script src="rota-lib.js"></script>
+<script>
+// The public page. It never asks who you are and the server never tells it a
+// name: what comes back is dates and counts. Two readings of the same list.
+// Plain, it is the calendar for parents. With ?gaps on the address it also
+// says how short each night is, which is the link to send when chasing.
+const GAPS = new URLSearchParams(location.search).has("gaps");
+let C = null, D = null, KEY = null;
+function showErr(m){ $("err").textContent = m; $("err").hidden = !m; }
+const iso = d => d.toISOString().slice(0, 10);
+const MONTH = s => new Date(s + "T12:00:00").toLocaleDateString("en-IE", { month: "long", year: "numeric" });
+
+function needOf(e){ return e.need > 0 ? e.need : D.required; }
+function needTOf(e){
+  const def = e.kind === "e" ? D.requiredTrainedEvents : D.requiredTrained;
+  return Math.min(Number.isFinite(e.needTrained) ? e.needTrained : def, needOf(e));
+}
+function statusOf(e){
+  if (e.off) return { cls: "off", text: "Called off" };
+  const short = needOf(e) - e.on, shortT = needTOf(e) - e.trained;
+  if (short <= 0 && shortT <= 0) return { cls: "ok", text: "Covered" };
+  if (short > 0) return { cls: "gap", text: `Needs ${short} more`, short: true };
+  return { cls: "warn", text: `Needs one with ${TRAIN.short}`, short: true };
+}
+
+function render(){
+  const section = C.settings.sections.find(x => x.key === KEY) || {};
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const list = (D.entries || []).filter(e => (e.endDate || e.date) >= iso(today)).sort((a, b) => a.date.localeCompare(b.date));
+  $("title").textContent = GAPS ? "Where we still need leaders" : "What is on";
+  $("strap").textContent = GAPS ? "Leaders needed" : "What is on";
+  $("mode").hidden = !GAPS;
+  $("intro").textContent = GAPS
+    ? "Every club night needs " + D.required + " leaders, and one of them has to hold " + TRAIN.label.toLowerCase() + ". These are the ones still short."
+    : [section.name || "Club night", [section.time, section.venue].filter(Boolean).join(", ")].filter(Boolean).join(", ") + ". Everything coming up is below.";
+
+  const live = list.filter(e => !e.off);
+  const short = live.filter(e => statusOf(e).short);
+  // Coverage belongs to the chasing link only. A parent looking up what is on
+  // does not need to be told the club is short, and it is not theirs to fix.
+  const call = $("callout");
+  call.hidden = !GAPS || !live.length;
+  if (!call.hidden) {
+    call.className = "banner" + (short.length ? "" : " good");
+    call.innerHTML = short.length
+      ? `<b>${short.length} of ${live.length} still need${short.length === 1 ? "s" : ""} someone.</b> If you can take one, tell the club and we will put you down.`
+      : `<b>All ${live.length} covered.</b> Nothing needed just now.`;
+  }
+
+  let month = "";
+  $("list").innerHTML = list.map(e => {
+    const st = statusOf(e), head = MONTH(e.date);
+    const rule = head !== month ? `<h2 class="month">${esc(head)}</h2>` : "";
+    month = head;
+    const where = e.kind === "e" ? e.location : (e.location || section.venue);
+    const sub = [e.kind === "m" ? section.time : "", where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
+    return `${rule}<div class="slot${e.off ? " isoff" : ""}">
+      <div class="slot-head"><div><span class="when">${esc(fmt(e.date))}</span> <span class="sub">${esc(e.title)}${sub ? ", " + esc(sub) : ""}</span></div>${GAPS || e.off ? `<span class="status ${st.cls}">${esc(st.text)}</span>` : ""}</div>
+      ${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}
+    </div>`;
+  }).join("") || `<div class="empty">Nothing coming up yet.</div>`;
+
+  $("foot").textContent = GAPS
+    ? "No names are on this page. Share it freely."
+    : "Dates can change. This page is kept up to date by the club.";
+}
+
+async function boot(){
+  try {
+    C = await loadContent();
+    KEY = (C.settings.sections[0] || {}).key;
+    const r = await fetch(API + "?a=public&section=" + encodeURIComponent(KEY), { cache: "no-store" });
+    D = await r.json();
+    if (!r.ok) throw new Error(D.error || "Error " + r.status);
+    render();
+  } catch (e) { showErr("The calendar could not be loaded. " + e.message); }
+}
+boot();
+</script>
+</body>
+</html>

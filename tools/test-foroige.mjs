@@ -245,6 +245,30 @@ r = await call("POST", "?a=slot", { token: tD, body: { section: "club", id: stuc
 ok("but a trained one can still get on it, so it is never stuck", [r.status, r.j.section.slots[stuck].who.length], [200, 4]);
 r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
 
+// The public calendar: no token, and no names in it, ever.
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [
+  { kind: "m", date: "2030-07-05", title: "Club night", details: "Bring runners.", location: "" },
+  { kind: "e", date: "2030-07-12", title: "Beach day", location: "Fanore", endDate: "2030-07-13" },
+  { kind: "m", date: "2030-07-19", title: "Club night", off: true }
+] } });
+const pubCal = r.j.calendar.entries;
+r = await call("POST", "?a=slot", { token: coord, body: { section: "club", id: "m:" + pubCal[0].id, add: [coordId, trainedId] } });
+r = await call("GET", "?a=public&section=club");
+ok("the public calendar needs no token", r.status, 200);
+ok("it lists what is on, in date order", r.j.entries.map(e => e.title), ["Club night", "Beach day", "Club night"]);
+ok("with the numbers the club asks for", [r.j.required, r.j.requiredTrained, r.j.requiredTrainedEvents], [3, 1, 0]);
+ok("and how short each night is, as counts", [r.j.entries[0].on, r.j.entries[0].trained], [2, 1]);
+ok("a called-off night is marked", r.j.entries[2].off, true);
+ok("descriptions and places come through", [r.j.entries[0].details, r.j.entries[1].location, r.j.entries[1].endDate], ["Bring runners.", "Fanore", "2030-07-13"]);
+ok("no names anywhere in it", /Coord|Trained One|Helper|Bulk|Plain/.test(JSON.stringify(r.j)), false);
+ok("no person ids either", JSON.stringify(r.j).includes(coordId), false);
+ok("and no roster, sections or ticks", ["people", "who", "roster", "codeHash"].some(x => JSON.stringify(r.j).includes(x)), false);
+r = await call("GET", "?a=public&section=Not%20A%20Key");
+ok("a bad club key is refused", r.status, 400);
+r = await call("POST", "?a=public&section=club");
+ok("it is read only: a POST is not the public route", r.status !== 200, true);
+r = await call("POST", "?a=calendar", { token: coord, body: { entries: [] } });
+
 // Codes, roles and removal.
 r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); const newCode = r.j.code;
 ok("recode returns a fresh code", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(newCode) && newCode !== helperCode, true);

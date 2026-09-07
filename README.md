@@ -17,12 +17,13 @@ and edited: a night that needs four, or an event that does need somebody
 approved after all. Leave those boxes blank and the night asks for whatever
 the club asks for.
 
-## The two pages
+## The three pages
 
-    rota.html     everyone's page: the club nights and events coming up,
-                  ticks, and the gaps
-    roster.html   the coordinator's page: who is on the roster, who is
-                  approved, who runs the club, codes
+    rota.html     for the club: the nights coming up, who is on them, and
+                  where the gaps are. Also where a club leader or the
+                  coordinator overrides what self service has produced
+    roster.html   the coordinator's: the roster, the calendar, the numbers
+    events.html   public. No sign-in and no names on it
 
     roster.html  \
                   ->  /.netlify/functions/foroige  ->  Blobs store "foroige"
@@ -35,7 +36,9 @@ the pages:
   whether it has been called off, and how many leaders it needs, for the club
   and for any single night. Adds people, marks who is approved, issues codes.
   There is always at least one.
-* **club leader** puts anyone on a night. Everyone else puts on themselves.
+* **club leader** puts anyone on a night, or takes them off, and is not held
+  to the numbers. The coordinator can do the same. Everyone else puts on
+  themselves.
 
 **Nobody has to type anything.** Each person gets their own link, shown once
 on the roster page and sent to them however suits. Opening it signs that
@@ -129,6 +132,20 @@ remove its ticks, and the page says so before it does.
    stripped, so a list copied out of a document works as it stands. Everyone
    gets a code, all shown together, once.
 
+## The public page
+
+`events.html` needs no sign-in and carries no names: the server hands it
+dates and counts, nothing about who. There are two links to it, both on the
+rota page under Links to share:
+
+* `/events` is the calendar for parents. What is on, where, and a line about
+  it. It says nothing about coverage.
+* `/events?gaps` marks each night "Needs 2 more" and totals them up. That is
+  the one to send when chasing leaders.
+
+The whole site is noindexed, so neither will turn up in a search: they are
+links to hand out, not a website.
+
 ## Deploying
 
 Netlify, publishing this repo. `netlify.toml` already sets the functions
@@ -146,7 +163,7 @@ it checks anything.
 
     npm install
     npm run build:function    # netlify/src -> netlify/functions
-    npm run test:function     # 109 offline cases
+    npm run test:function     # 120 offline cases
     npm run serve             # http://127.0.0.1:8899/rota.html
 
 The preview runs the real function against an in-memory store that lasts

@@ -23,6 +23,7 @@ a{color:var(--green-700)}
 .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.1rem;margin-bottom:.9rem;border:1px solid rgba(0,0,0,.03)}
 .banner{background:var(--amber-soft);border-left:4px solid var(--amber);padding:.8rem 1rem;border-radius:12px;margin:1rem 0;font-size:.92rem}
 .banner.err{background:#FBE9EC;border-color:#B0306A}
+.banner.good{background:var(--green-100);border-color:var(--green-700)}
 .chips{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0 1rem}
 .chip{border:1px solid var(--stone-200);background:#fff;border-radius:999px;padding:.4em 1em;font-weight:500;cursor:pointer;font:inherit}
 .chip.on{background:var(--green-700);color:#fff;border-color:var(--green-700)}
@@ -43,11 +44,18 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .gap.warn{background:var(--amber-soft);color:#7A4A00}
 .count{font-variant-numeric:tabular-nums;white-space:nowrap}
 .slot{border-top:1px solid var(--stone-100);padding:.8rem 0}
+/* A night still short is worth spotting; one you could take, more so. */
+.slot.short{border-left:3px solid var(--stone-200);padding-left:.7rem;margin-left:-.7rem}
+.slot.open{border-left:3px solid var(--green-500);padding-left:.7rem;margin-left:-.7rem;background:linear-gradient(90deg,var(--green-100),transparent 60%)}
+.gap.open{box-shadow:inset 3px 0 0 var(--green-500)}
 .slot:first-of-type{border-top:0}
 .slot-head{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem}
 .slot-head .when{font-weight:600}
 .slot-head .sub{color:var(--stone-600);font-size:.88rem}
 .detail{margin:.2rem 0 0;font-size:.9rem;color:var(--stone-600)}
+.month{font-size:.78rem;font-family:var(--sans);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--stone-400);margin:1.1rem 0 .2rem}
+.slot:first-of-type .month,.month:first-child{margin-top:0}
+.slot.isoff .when,.slot.isoff .sub{text-decoration:line-through;color:var(--stone-400)}
 .status{font-size:.74rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:.2em .6em;border-radius:999px;white-space:nowrap}
 .status.gap{background:#FBE9EC;color:#7A1F2E}
 .status.ok{background:var(--green-100);color:#1B5E45}
@@ -87,6 +95,10 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .entry input[type=date]{font:inherit;padding:.5em .6em;border:1px solid var(--stone-200);border-radius:10px;background:#fff;color:var(--ink)}
 .entry select{max-width:8.5rem}
 .code{font:700 1.6rem/1.2 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.08em;background:var(--stone-50);padding:.6rem .9rem;border-radius:10px;display:inline-block;margin:.3rem 0}
+.share{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .8rem;padding:.55rem 0;border-top:1px solid var(--stone-100)}
+.share:first-of-type{border-top:0}
+.share b{min-width:11rem;font-size:.92rem}
+.share .link{flex:1;min-width:12rem;font-size:.85rem}
 .codes{display:grid;gap:.3rem;margin:.6rem 0 0}
 .codes div{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;font-size:.95rem;padding:.3rem .5rem;background:var(--stone-50);border-radius:8px}
 .codes b{font:600 .82rem/1.35 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;text-align:right}

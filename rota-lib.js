@@ -12,8 +12,14 @@ const linkCode = new URLSearchParams(location.search).get("c");
 function dropCodeFromUrl(){
   try { const u = new URL(location.href); if (u.searchParams.has("c")) { u.searchParams.delete("c"); history.replaceState(null, "", u.pathname + u.search + u.hash); } } catch {}
 }
+// Links to the pages beside this one, whether Netlify is serving them pretty
+// (/rota) or as files (/rota.html).
+function pageLink(page, query){
+  const path = location.pathname.replace(/(rota|roster|events)(\.html)?$/, (m, name, ext) => page + (ext || ""));
+  return location.origin + (path === location.pathname && !/\/(rota|roster|events)/.test(path) ? "/" + page : path) + (query || "");
+}
 // The link to send someone. Same code, nothing to remember.
-const codeLink = code => location.origin + location.pathname.replace(/roster(\.html)?$/, m => m.includes(".") ? "rota.html" : "rota") + "?c=" + encodeURIComponent(code);
+const codeLink = code => pageLink("rota") + "?c=" + encodeURIComponent(code);
 function setToken(t){ token = t; try { if (t) localStorage.setItem(TK, t); else localStorage.removeItem(TK); } catch {} }
 let onUnauthorized = () => {};
 
