@@ -20,6 +20,12 @@ a{color:var(--green-700)}
 .brand{font-family:var(--serif);font-weight:700;font-size:1.1rem}
 .brand small{display:block;font-family:var(--sans);font-weight:500;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
 .pill{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;background:var(--amber);color:#fff;padding:.3em .7em;border-radius:999px;white-space:nowrap}
+/* The way back to the public page, in the bar on the rota and the roster so
+   it is there before anyone signs in. The club's name goes there too. */
+a.brand{color:#fff;text-decoration:none}
+.home{display:inline-flex;align-items:center;gap:.3rem;font-weight:600;font-size:.92rem;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.55);border-radius:999px;padding:.45em .95em .45em .75em;white-space:nowrap}
+.home span{font-size:1.25em;line-height:1;margin-top:-.1em}
+.home:hover,.home:focus-visible{background:rgba(255,255,255,.14);border-color:#fff;outline:0}
 .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.1rem;margin-bottom:.9rem;border:1px solid rgba(0,0,0,.03)}
 .banner{background:var(--amber-soft);border-left:4px solid var(--amber);padding:.8rem 1rem;border-radius:12px;margin:1rem 0;font-size:.92rem}
 .banner.err{background:#FBE9EC;border-color:#B0306A}

@@ -181,8 +181,11 @@ own name from the store. The wording is the club's to change there.
 
 **Signing out goes to the public page.** `signOut()` with no message is the
 button, and it navigates to `homeLink()`; with a message it is the server
-(a revoked link, an expired token) and the gate stays put to show it. Both
-signed-in headers carry a What is on link, and the rota's gate tells a
+(a revoked link, an expired token) and the gate stays put to show it. The
+green bar on the rota and the roster carries a What is on button, there
+before anyone signs in, and the club's name in it is a link too; the pill
+that said who the page was for went, the caption already said it. The
+rota's gate tells a
 leader to use the WhatsApp link the Foróige Secretary sent, with the code
 box kept underneath as the fallback.
 

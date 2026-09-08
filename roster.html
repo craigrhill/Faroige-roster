@@ -12,8 +12,8 @@
 </head>
 <body>
 <header class="appbar"><div class="wrap">
-  <div class="brand"><span data-club-name>Foróige club</span><small>Roster</small></div>
-  <span class="pill">Coordinator</span>
+  <a class="brand" href="events.html"><span data-club-name>Foróige club</span><small>Roster</small></a>
+  <a class="home" href="events.html"><span aria-hidden="true">&lsaquo;</span> What is on</a>
 </div></header>
 <main class="wrap">
   <div id="err" class="banner err" hidden></div>
@@ -37,7 +37,7 @@
   <section id="app" hidden>
     <div class="row" style="justify-content:space-between;margin:.9rem 0 .2rem">
       <span class="small muted">Signed in as <b id="meName"></b><span id="meRole"></span></span>
-      <span><a class="btn quiet" href="events.html">What is on</a><a class="btn quiet" href="rota.html">Rota</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
+      <span><a class="btn quiet" href="rota.html">Rota</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
     </div>
     <div id="codeBox" class="banner" hidden></div>
 
