@@ -280,12 +280,23 @@ async function seedTimesOnce(){
     } catch {}
   }
 }
-const setNums = (key, field, v) => guarded(async () => {
-  $("numsMsg").textContent = ""; $("numsMsg").className = "msg";
-  const r = await api("POST", "?a=required", { section: key, [field]: Number(v) });
-  D.sections[key] = { ...D.sections[key], ...r.section };
-  $("numsMsg").textContent = "Saved."; renderNums(); renderCal();
-});
+// Saving must not redraw the card. On an iPhone a time box is a scrolling
+// wheel that fires a change on every notch, and redrawing the card threw away
+// the box mid-scroll and closed the wheel. So the boxes are left as they are,
+// only the calendar's summary lines are refreshed, and a time is saved once
+// the wheel has stopped rather than on every notch.
+const numsTimers = {};
+const setNums = (key, field, v) => {
+  const isTime = field === "startTime" || field === "endTime";
+  const save = () => guarded(async () => {
+    $("numsMsg").textContent = ""; $("numsMsg").className = "msg";
+    const r = await api("POST", "?a=required", { section: key, [field]: isTime ? v : Number(v) });
+    D.sections[key] = { ...D.sections[key], ...r.section };
+    $("numsMsg").textContent = "Saved."; renderCal();
+  });
+  clearTimeout(numsTimers[field]);
+  if (isTime) numsTimers[field] = setTimeout(save, 700); else save();
+};
 function renderCal(){
   const taken = !!(D.calendar && D.calendar.updatedAt);
   $("calNote").textContent = taken
