@@ -33,7 +33,7 @@
 </main>
 <footer class="wrap">
   <span id="foot"></span>
-  <span class="footlinks noprint"><a id="mine" href="rota.html" hidden>Your rota</a><a href="roster.html">Admin</a></span>
+  <span class="footlinks noprint"><a id="mine" href="rota.html">Leaders' rota</a><a href="roster.html">Admin</a></span>
 </footer>
 
 <script src="rota-lib.js"></script>
@@ -165,7 +165,9 @@ function render(){
     </article>`;
   }).join("") || `<div class="card"><div class="empty">Nothing coming up yet.</div></div>`;
 
-  $("mine").hidden = !token;
+  // The rota is always a step away for a leader. A phone already signed in
+  // gets called by its own name.
+  $("mine").textContent = token ? "Your rota" : "Leaders' rota";
   $("foot").textContent = GAPS
     ? "No names are on this page. Share it freely."
     : "Dates can change. This page is kept up to date by the club.";

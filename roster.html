@@ -37,7 +37,7 @@
   <section id="app" hidden>
     <div class="row" style="justify-content:space-between;margin:.9rem 0 .2rem">
       <span class="small muted">Signed in as <b id="meName"></b><span id="meRole"></span></span>
-      <span><a class="btn quiet" href="rota.html">Rota</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
+      <span><a class="btn quiet" href="events.html">What is on</a><a class="btn quiet" href="rota.html">Rota</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
     </div>
     <div id="codeBox" class="banner" hidden></div>
 
@@ -55,6 +55,12 @@
         <label class="small"><input type="checkbox" id="newSecretary"> Coordinator: can change this roster</label>
         <div><button class="btn" onclick="addPerson()">Add and get a link</button></div>
       </div>
+    </div>
+
+    <div class="card" id="loadCard" hidden>
+      <h2>Who is down for what</h2>
+      <p class="small muted" id="loadNote"></p>
+      <div class="tablewrap"><table class="load" id="loadTable"></table></div>
     </div>
 
     <div class="card" id="numsCard" hidden>
@@ -78,7 +84,7 @@
 
     <details class="card" id="bulkCard" hidden>
       <summary>Add a list of names at once</summary>
-      <p class="small muted" style="margin-top:.6rem">One name per line. Put a <b>*</b> at the end of a line for anyone who holds <span data-training-label>the training</span>. Names already on the roster are left alone. Every new person gets a link to send them, all shown together below, once.</p>
+      <p class="small muted" style="margin-top:.6rem">One name per line. Put a <b>*</b> at the end of a line for anyone who holds <span data-training-label>the training</span>. Names already on the roster are left alone. Every new person gets a link to send them, shown together below and kept beside their name above.</p>
       <div class="add">
         <textarea id="bulkText" placeholder="Mary Ryan *&#10;Sean Daly&#10;Aoife Burke *" spellcheck="false"></textarea>
         <div class="row"><button class="btn" onclick="addMany()">Add them</button><span class="small muted" id="bulkCount"></span></div>
@@ -87,7 +93,7 @@
     </details>
   </section>
 </main>
-<footer class="wrap">Nothing on this page is public. Each link is personal and shown once.</footer>
+<footer class="wrap">Nothing on this page is public. Each link is personal: send it to that one person only.</footer>
 
 <script src="rota-lib.js"></script>
 <script>
@@ -108,6 +114,46 @@ const defaultSections = () => many() ? [] : C.settings.sections.map(x => x.key);
 // onchange, if given, is a function of the club key returning the handler text.
 function chips(checked, onchange){ return C.settings.sections.map(x => `<label><input type="checkbox" ${checked.includes(x.key) ? "checked" : ""} data-key="${esc(x.key)}" ${onchange ? `onchange="${onchange(esc(x.key))}"` : ""}>${esc(x.name)}</label>`).join(""); }
 
+// The person's current link, kept so it can be sent again rather than made
+// afresh each time: a new link would leave the old message on their phone
+// pointing at nothing. Somebody from before links were kept has none on
+// record, and New link is the only way for them.
+function linkRow(p){
+  if (!p.code) return `<span class="lnk"><span class="small muted">No link on record. Use New link and send them that one.</span></span>`;
+  return `<span class="lnk"><span class="link small" id="lnk-${esc(p.id)}">${esc(codeLink(p.code))}</span><button class="btn tiny" onclick="copyLink('${esc(p.id)}', this)">Copy link</button><button class="btn tiny" onclick="copyMessage('${esc(p.id)}', this)">Copy message</button></span>`;
+}
+const copyLink = (id, btn) => { const p = personById(id); if (p && p.code) copyText(codeLink(p.code), btn); };
+// The whole message, link and all, signed by whoever is sending it.
+const copyMessage = (id, btn) => { const p = personById(id); if (p && p.code) copyText(messageFor(C, p, p.code, D.me.name), btn); };
+
+// How much each person has taken on, counted over the nights still to come
+// that have not been called off. Somebody on nothing yet is the one to chase,
+// so that row is marked.
+function loadOf(){
+  const t = iso(new Date());
+  const cal = (calFromServer().length || (D.calendar && D.calendar.updatedAt)) ? calFromServer() : fromConfig().map((e, i) => ({ ...e, id: e.kind === "m" ? e.date : e.date + ":" + e.title }));
+  const live = cal.filter(e => !e.off && (e.endDate || e.date) >= t);
+  const counts = new Map((D.people || []).map(p => [p.id, { nights: 0, events: 0 }]));
+  for (const k of keys()) {
+    const slots = (D.sections[k] || {}).slots || {};
+    for (const e of live) {
+      const s = slots[e.kind + ":" + e.id]; if (!s) continue;
+      for (const id of s.who) { const c = counts.get(id); if (c) c[e.kind === "e" ? "events" : "nights"]++; }
+    }
+  }
+  return { counts, nights: live.filter(e => e.kind !== "e").length, events: live.filter(e => e.kind === "e").length };
+}
+function renderLoad(){
+  const { counts, nights, events } = loadOf();
+  const people = (D.people || []).slice().sort(byName);
+  const rows = people.map(p => { const c = counts.get(p.id) || { nights: 0, events: 0 }; return { p, ...c, total: c.nights + c.events }; });
+  const none = rows.filter(r => r.total === 0).length;
+  $("loadNote").textContent = `${nights} club night${nights === 1 ? "" : "s"} and ${events} event${events === 1 ? "" : "s"} still to come.` + (none ? ` ${none} ${none === 1 ? "person is" : "people are"} down for nothing yet.` : " Everyone is down for something.");
+  $("loadTable").innerHTML = `<thead><tr><th>Leader</th><th>Nights</th><th>Events</th><th>Total</th></tr></thead><tbody>`
+    + rows.map(r => `<tr class="${r.total ? "" : "zero"}"><td>${esc(r.p.name)}${r.p.trained ? ` <span class="tag">${esc(TRAIN.short)}</span>` : ""}</td><td>${r.nights}</td><td>${r.events}</td><td><b>${r.total}</b>${r.total ? "" : `<span class="none">none yet</span>`}</td></tr>`).join("")
+    + `</tbody>`;
+}
+
 function render(){
   const me = D.me, manage = canManage();
   $("meName").textContent = me.name; const role = roleText(me); $("meRole").textContent = role ? ", " + role : "";
@@ -118,13 +164,14 @@ function render(){
   $("bulkCard").hidden = !manage;
   $("calCard").hidden = !manage;
   $("numsCard").hidden = !manage;
-  if (manage) { renderNums(); renderCal(); }
+  $("loadCard").hidden = !manage;
+  if (manage) { renderNums(); renderCal(); renderLoad(); }
   $("newSecs").hidden = !many();
   const people = (D.people || []).slice().sort(byName);
   const trained = people.filter(p => p.trained).length;
   $("tally").textContent = people.length ? `${people.length} on the roster, ${trained} with ${TRAIN.label.toLowerCase()}.` : "";
   $("people").innerHTML = people.length ? people.map(p => manage
-    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New link</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span></div>`
+    ? `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : ""}</span>${many() ? `<span class="secs">${chips(p.sections || [], k => `setSections('${esc(p.id)}','${k}',this.checked)`)}</span>` : ""}<span class="tools"><label><input type="checkbox" ${p.trained ? "checked" : ""} onchange="setFlag('${esc(p.id)}','trained',this.checked)"> trained</label><label><input type="checkbox" ${p.secretary ? "checked" : ""} onchange="setFlag('${esc(p.id)}','secretary',this.checked)"> coordinator</label><button class="btn quiet" onclick="recode('${esc(p.id)}')">New link</button><button class="btn quiet" title="Remove" onclick="removePerson('${esc(p.id)}')">&#x2715;</button></span>${linkRow(p)}</div>`
     : `<div class="person"><span class="nm">${esc(p.name)}${trainedTag(p)}${p.secretary ? "<small>coordinator</small>" : ""}</span>${many() ? `<span class="small muted">${(p.sections || []).map(sectionName).join(", ") || "no club"}</span>` : ""}</div>`
   ).join("") : `<div class="empty">Nobody yet.</div>`;
   if (manage && many()) $("newSecs").innerHTML = chips([], null);
@@ -303,13 +350,15 @@ const addMany = () => guarded(async () => {
   $("bulkText").value = ""; $("bulkCount").textContent = "";
   $("bulkOut").innerHTML = `<div class="banner"><b>${r.added.length} added.</b>${r.skipped.length ? ` Already on the roster, left alone: ${esc(r.skipped.join(", "))}.` : ""}
     ${r.added.length ? `<div class="codes" id="codeList">${r.added.map(a => `<div><span>${esc(a.person.name)}${a.person.trained ? " (" + esc(TRAIN.short) + ")" : ""}</span><b>${esc(codeLink(a.code))}</b></div>`).join("")}</div>
-    <p class="small" style="margin:.6rem 0 0">Send each person their own link. They are shown only once, and nobody has to type anything. <button class="btn" onclick="copyList()">Copy the list</button></p>` : ""}</div>`;
+    <p class="small" style="margin:.6rem 0 0">Send each person their own link, and nobody has to type anything. Each one is kept beside their name above, with a ready-made message to send with it. <button class="btn" onclick="copyList()">Copy the list</button></p>` : ""}</div>`;
   await load();
 });
 async function copyList(){ try { await navigator.clipboard.writeText([...$("codeList").children].map(d => d.children[0].textContent + ": " + d.children[1].textContent).join("\n")); } catch {} }
 const setSections = (id, key, on) => guarded(async () => { const p = personById(id); const sections = on ? [...new Set([...(p.sections || []), key])] : (p.sections || []).filter(x => x !== key); await api("POST", "?a=person-update", { id, sections }); await load(); });
 const setFlag = (id, flag, on) => guarded(async () => { await api("POST", "?a=person-update", { id, [flag]: on }); await load(); });
-const recode = (id) => guarded(async () => { const p = personById(id); if (!confirm("Give " + p.name + " a new link? Their old one will stop working and they will be signed out.")) return; const r = await api("POST", "?a=recode", { id }); showCode(p.name, r.code); });
+// The row carries the link now, so it has to be refetched after a new one is
+// issued, or it would go on showing the link that has just stopped working.
+const recode = (id) => guarded(async () => { const p = personById(id); if (!confirm("Give " + p.name + " a new link? Their old one will stop working and they will be signed out.")) return; const r = await api("POST", "?a=recode", { id }); await load(); showCode(p.name, r.code); });
 const removePerson = (id) => guarded(async () => { const p = personById(id); if (!confirm("Remove " + p.name + " from the roster? Their ticks on every rota are removed too.")) return; await api("POST", "?a=person-remove", { id, sections: C.settings.sections.map(x => x.key) }); await load(); });
 // Her name and the password. No code, no link, and nothing is emailed: the
 // name says who she is and the password says she is allowed.
@@ -324,7 +373,10 @@ async function adminSignIn(ev){
   } catch (e) { $("gateMsg").textContent = e.message; $("gateMsg").className = "msg err"; }
 }
 $("adminForm").addEventListener("submit", adminSignIn);
-function signOut(msg){ setToken(null); D = null; CAL = null; calDirty = false; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
+// Signing out goes back to the public page, where everything starts. Being
+// signed out by the server (a link revoked, a token expired) stays here and
+// says why, so the message is not lost on the way.
+function signOut(msg){ setToken(null); D = null; CAL = null; calDirty = false; if (!msg) { location.href = homeLink(); return; } $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){
   C = await loadContent();

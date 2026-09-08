@@ -50,9 +50,9 @@ advisory: the function never refuses a tick for going over them.
 
     rota.html               coverage, everyone. Three tabs, no settings
     events.html             the public page, and where the bare address lands.
-                            No sign-in, no names. Admin at its foot goes to
-                            the roster; Your rota appears only for a browser
-                            that already holds a sign-in
+                            No sign-in, no names. Leaders' rota and Admin at
+                            its foot; a browser already signed in sees the
+                            first as Your rota
     roster.html             the coordinator's page, including bulk add
     rota-lib.js             shared sign-in, API calls, config loading
     rota.css                shared styles
@@ -165,6 +165,31 @@ Both pages carry `<meta name="referrer" content="no-referrer">`. Without it
 the Google Fonts request would carry the whole URL, code and all, in the
 Referer header.
 
+**Each person's link is kept, not shown once.** The store holds the code
+beside its hash, and the coordinator's GET carries it per person, so the
+roster can show the current link with Copy link and Copy message beside it.
+Nobody else is ever handed a code: a volunteer's GET, the login reply, the
+public calendar and the feed all leave it out, and the offline suite checks
+each. New link is the only thing that changes one. Somebody added before
+codes were kept has `code: null` and the row says so. The store is private
+and the token secret already sits in the same store, so keeping the code in
+clear there adds nothing an attacker with the store did not already have.
+
+**Copy message** fills the template in `rota-config.json` (`message`, with
+`{name}`, `{link}`, `{from}`, `{club}`) and signs it with the coordinator's
+own name from the store. The wording is the club's to change there.
+
+**Signing out goes to the public page.** `signOut()` with no message is the
+button, and it navigates to `homeLink()`; with a message it is the server
+(a revoked link, an expired token) and the gate stays put to show it. Both
+signed-in headers carry a What is on link, and the rota's gate tells a
+leader to use the WhatsApp link the Foróige Secretary sent, with the code
+box kept underneath as the fallback.
+
+**Who is down for what** on the roster counts each person over the nights
+still to come that are not called off, club nights and events apart, and
+marks anyone at nothing in red. It reads the same slots the rota does.
+
 **The rota is three tabs**, remembered in `localStorage` under
 `foroige-tab`: Gaps (what is still short, each row offering itself to anyone
 who can take it), Availability (every night, with the controls), and My
@@ -197,7 +222,8 @@ page purely so the button knows what to say.
 
 Everything lives in the private Blobs store `foroige`. Keys: `secret` (the
 HMAC key, generated on first use, never leaves the server), `roster` (people
-with `id`, `name`, `sections`, `trained`, `lead`, `secretary`, `codeHash`),
+with `id`, `name`, `sections`, `trained`, `secretary`, `codeHash` and
+`code`),
 `section/<key>` (the three numbers and `slots`, each slot `who` as person
 ids, `off`, and optional `need` and `needTrained`), `calendar` (see above).
 

@@ -28,7 +28,12 @@
 //   admin-tries     wrong tries at signing in, when it reopens, how many
 //                   times it has shut, and the deploy that was live at the
 //                   time: a newer one means start again
-//   roster          { people: [{ id, name, sections, trained, secretary, codeHash }] }
+//   roster          { people: [{ id, name, sections, trained, secretary,
+//                                codeHash, code }] }
+//                   The code is kept as well as its hash, so the coordinator
+//                   can send someone the same link again instead of issuing
+//                   a new one that leaves the old message in their WhatsApp
+//                   wrong. Only the coordinator's own GET ever carries it.
 //   calendar        { entries: [{ id, kind, date, endDate, title, location,
 //                                 details, need, needTrained, off,
 //                                 startTime, endTime }] }
@@ -54,6 +59,8 @@
 //   GET    ?a=public&section=k   (no token)         { required, ..., entries }
 //   GET    ?a=ics&section=k      (no token)         text/calendar
 //   GET    ?sections=a,b                            { me, people, sections, calendar }
+//                        For the coordinator each person carries their code;
+//                        for anyone else it is left off.
 //   POST   ?a=admin-login x-admin-password {name,sections} { token, me, created }
 //                        The coordinator's way in: her name and the password,
 //                        no code and no link. It makes her the coordinator if
@@ -69,7 +76,8 @@
 //   POST   ?a=people   {people:[{name,sections,trained}]}      { added, skipped }  coordinator
 //   POST   ?a=person-update {id,name?,sections?,trained?,secretary?}       { person }
 //   POST   ?a=person-remove {id,sections}                     { people }
-//   POST   ?a=recode   {id}                                   { code }
+//   POST   ?a=recode   {id}                                   { code }   coordinator
+//                        A fresh code: the old link stops working.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
@@ -182,6 +190,10 @@ const sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DE
 // off the "m:" or "e:" on its id. That is the pages' job: the numbers are
 // advisory and nothing here refuses a tick for going over them.
 const pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, secretary: !!p.secretary });
+// The coordinator's view of a person: the same, plus the code their link
+// carries, so it can be sent again. Somebody from before codes were kept has
+// null here, and only a new link will do for them.
+const pubFull = (p) => ({ ...pub(p), code: p.code || null });
 const isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 const isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 const cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
@@ -193,7 +205,7 @@ const optNum = (v) => (v === null || v === undefined || v === "") ? null : num(v
 async function body(req) { try { const b = await req.json(); return b && typeof b === "object" ? b : null; } catch { return null; } }
 function makePerson(b, sec, code) {
   return { id: randomBytes(4).toString("hex"), name: cleanName(b.name), sections: cleanSections(b.sections),
-    trained: !!b.trained, secretary: !!b.secretary, codeHash: codeHash(sec, code),
+    trained: !!b.trained, secretary: !!b.secretary, codeHash: codeHash(sec, code), code,
     createdAt: new Date().toISOString() };
 }
 
@@ -353,7 +365,7 @@ export function createHandler(storeFactory) {
         const mine = new Set(me.sections || []);
         const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
-        return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
+        return json(200, { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -486,7 +498,8 @@ export function createHandler(storeFactory) {
 
       // Bulk add, so a coordinator can paste a list in rather than typing it
       // out. Names already on the roster are skipped, not duplicated or
-      // overwritten. Codes come back once, here, and are never stored.
+      // overwritten. Codes come back here and stay on the roster, so the
+      // coordinator can send a link again without issuing a new one.
       if (a === "people") {
         const rows = Array.isArray(b.people) ? b.people.slice(0, MAX_BULK) : null;
         if (!rows || !rows.length) return fail(400, "No names given.");
@@ -523,7 +536,7 @@ export function createHandler(storeFactory) {
         if (losingSecretary && secretaries <= 1) return fail(409, "Keep at least one coordinator.");
         if (a === "recode") {
           const code = newCode();
-          await update(store, "roster", rosterFallback, (d) => { const p = d.people.find((x) => x.id === b.id); if (!p) return false; p.codeHash = codeHash(sec, code); return d; });
+          await update(store, "roster", rosterFallback, (d) => { const p = d.people.find((x) => x.id === b.id); if (!p) return false; p.codeHash = codeHash(sec, code); p.code = code; return d; });
           return json(200, { code });
         }
         if (a === "person-update") {

@@ -171,6 +171,24 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .secs label{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;border:1px solid var(--stone-200);border-radius:999px;padding:.2em .65em;background:#fff;cursor:pointer}
 .secs input{accent-color:var(--green-700);margin:0}
 .tools{margin-left:auto;display:flex;gap:.2rem;align-items:center;flex-wrap:wrap}
+/* The person's link, on its own line under the name, with what to do with it. */
+.person .lnk{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem;margin-top:-.1rem}
+.person .lnk .link{margin:0;padding:.35rem .6rem;font-size:.8rem;flex:1 1 14rem}
+.btn.tiny{padding:.3em .8em;font-size:.82rem}
+.btn:disabled{opacity:.7;cursor:default}
+/* Who is down for what: one row a person, the ones on nothing picked out. */
+.tablewrap{overflow-x:auto}
+table.load{width:100%;border-collapse:collapse;font-size:.92rem}
+table.load th,table.load td{text-align:left;padding:.45rem .6rem;border-top:1px solid var(--stone-100);white-space:nowrap}
+table.load th{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--stone-400);border-top:0}
+table.load th:not(:first-child),table.load td:not(:first-child){text-align:right}
+table.load tr.zero td{background:#FBE9EC;color:#7A1F2E}
+table.load tr.zero td:first-child{font-weight:600;box-shadow:inset 3px 0 0 #B0306A}
+table.load .none{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-left:.5rem}
+@media (max-width:430px){
+  table.load th,table.load td{padding:.4rem .35rem}
+  table.load .none{display:none}
+}
 .tools label{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem}
 .add{display:grid;gap:.55rem;margin-top:.8rem}
 .entry{display:grid;gap:.45rem;padding:.7rem 0;border-top:1px solid var(--stone-100)}

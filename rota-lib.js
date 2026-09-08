@@ -36,7 +36,10 @@ async function api(method, q, body, extra = {}) {
 // these pages. Fetched by relative path so the folder can be moved or renamed.
 const FALLBACK = { club: { name: "Foróige club" },
   training: { label: "Building training", short: "Building training" },
-  settings: { sections: [{ key: "club", name: "Club night", day: "Wednesday" }] }, events: [] };
+  settings: { sections: [{ key: "club", name: "Club night", day: "Wednesday" }] }, events: [],
+  // The message the coordinator sends with a link. {name}, {link}, {from} and
+  // {club} are filled in; the wording can be changed in rota-config.json.
+  message: "Hi {name}, here is your link to the {club} rota for the term:\n\n{link}\n\nThis link is unique to you, so please keep it to yourself. Open it and you can put yourself down for the club nights and events you are free to volunteer at. It is first come, first served: once a night has the leaders it needs it closes, so grab the dates that suit you early. Your phone stays signed in, so keep this message in case you need the link again.\n\nThanks, {from}" };
 let TRAIN = FALLBACK.training;
 async function loadContent(){
   let c;
@@ -46,6 +49,7 @@ async function loadContent(){
   c.training = { ...FALLBACK.training, ...(c.training || {}) };
   c.training.short = c.training.short || c.training.label;
   c.events = Array.isArray(c.events) ? c.events : [];
+  c.message = typeof c.message === "string" && c.message.trim() ? c.message : FALLBACK.message;
   TRAIN = c.training;
   document.querySelectorAll("[data-club-name]").forEach(el => { el.textContent = c.club.name; });
   document.querySelectorAll("[data-training-label]").forEach(el => { el.textContent = c.training.label; });
@@ -61,10 +65,23 @@ const byName = (a, b) => a.name.localeCompare(b.name, "en-IE");
 const byTrainedThenName = (a, b) => (!!b.trained - !!a.trained) || byName(a, b);
 
 function showCode(name, code){
-  $("codeBox").innerHTML = `<b>Link for ${esc(name)}</b><br><span class="link" id="codeText">${esc(codeLink(code))}</span><br><span class="small">Send it to them now, and they will not have to type anything. It is shown only once; use New link if it is lost.</span> <button class="btn" onclick="copyCode()">Copy the link</button> <button class="btn quiet" onclick="$('codeBox').hidden=true">Close</button>`;
+  $("codeBox").innerHTML = `<b>Link for ${esc(name)}</b><br><span class="link" id="codeText">${esc(codeLink(code))}</span><br><span class="small">Send it to them and they will not have to type anything. It stays beside their name on the roster, so it can be sent again any time.</span> <button class="btn" onclick="copyText($('codeText').textContent, this)">Copy the link</button> <button class="btn quiet" onclick="$('codeBox').hidden=true">Close</button>`;
   $("codeBox").hidden = false; $("codeBox").scrollIntoView({ block: "center" });
 }
-async function copyCode(){ try { await navigator.clipboard.writeText($("codeText").textContent); } catch {} }
+// Put text on the clipboard and say so on the button that did it, briefly.
+async function copyText(text, btn){
+  let done = false;
+  try { await navigator.clipboard.writeText(text); done = true; } catch {}
+  if (btn) { const was = btn.textContent; btn.textContent = done ? "Copied" : "Could not copy"; btn.disabled = true; setTimeout(() => { btn.textContent = was; btn.disabled = false; }, 1400); }
+  return done;
+}
+// The message that goes with somebody's link, ready to paste into WhatsApp.
+function messageFor(config, person, code, from){
+  const fill = { name: person.name, link: codeLink(code), from: from || "", club: (config.club || {}).name || "the club" };
+  return String(config.message || "").replace(/\{(name|link|from|club)\}/g, (m, k) => fill[k]);
+}
+// Where the whole thing starts: the public page. Signing out lands there.
+const homeLink = () => pageLink("events");
 // Sign in from the link, if there is one, before falling back to the gate.
 async function signInFromLink(after){
   if (!linkCode) return false;

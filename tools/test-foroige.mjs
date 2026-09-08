@@ -98,6 +98,13 @@ ok("bulk add returns codes for the new names only", [r.status, r.j.added.length,
 ok("bulk add carries the training flag", r.j.added.map(a => a.person.trained), [true, false]);
 ok("bulk codes are all different", new Set(r.j.added.map(a => a.code)).size, 2);
 ok("bulk add never makes anyone a coordinator", r.j.added.every(a => a.person.secretary === false), true);
+const bulkCodes = Object.fromEntries(r.j.added.map(a => [a.person.name, a.code]));
+// The links are kept, so the coordinator can send one again rather than make
+// a new one that leaves the old message on somebody's phone pointing nowhere.
+const kept = await call("GET", "?sections=club", { token: coord });
+const byName = Object.fromEntries(kept.j.people.map(p => [p.name, p.code]));
+ok("the coordinator's GET carries each person's current code", [byName["Helper One"], byName["Bulk Trained"], byName["Bulk Plain"]], [helperCode, bulkCodes["Bulk Trained"], bulkCodes["Bulk Plain"]]);
+ok("and it is the real code: it signs in", (await call("POST", "?a=login", { body: { code: byName["Bulk Plain"] } })).status, 200);
 ok("and nobody comes out of it with a role beyond volunteer", r.j.added.every(a => !("lead" in a.person)), true);
 const bulkTrainedId = r.j.added[0].person.id;
 r = await call("POST", "?a=people", { token: coord, body: { people: [{ name: "Bulk Plain" }] } });
@@ -179,6 +186,8 @@ r = await call("GET", "?sections=club", { token: helper });
 ok("everyone in the club is visible to a volunteer", r.j.people.length, 5);
 ok("the trained flag comes back with each person", r.j.people.filter(p => p.trained).map(p => p.name).sort(), ["Bulk Trained", "Trained One"]);
 ok("no code hashes leak in GET", JSON.stringify(r.j).includes("codeHash"), false);
+ok("and a volunteer is never handed anyone's code, not even their own", r.j.people.some(p => "code" in p), false);
+ok("nor is the login reply a way to read one back", "code" in (await call("POST", "?a=login", { body: { code: helperCode } })).j, false);
 
 // Conditional-write retry: make the next conditional set fail once, as it would if someone else saved first.
 const realSet = store.set.bind(store); let failed = 0;
@@ -302,6 +311,7 @@ ok("descriptions and places come through", [r.j.entries[0].details, r.j.entries[
 ok("no names anywhere in it", /Coord|Trained One|Helper|Bulk|Plain/.test(JSON.stringify(r.j)), false);
 ok("no person ids either", JSON.stringify(r.j).includes(coordId), false);
 ok("and no roster, sections or ticks", ["people", "who", "roster", "codeHash"].some(x => JSON.stringify(r.j).includes(x)), false);
+ok("and no code, in the public calendar or the feed", [JSON.stringify(r.j).includes(helperCode), (await call("GET", "?a=ics&section=club")).j.includes(helperCode)], [false, false]);
 r = await call("GET", "?a=public&section=Not%20A%20Key");
 ok("a bad club key is refused", r.status, 400);
 r = await call("POST", "?a=public&section=club");
@@ -346,6 +356,9 @@ r = await call("POST", "?a=recode", { token: coord, body: { id: helperId } }); c
 ok("recode returns a fresh code", /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(newCode) && newCode !== helperCode, true);
 r = await call("POST", "?a=login", { body: { code: helperCode } }); ok("old code no longer works", r.status, 401);
 r = await call("POST", "?a=login", { body: { code: newCode } });    ok("new code works", r.status, 200);
+r = await call("GET", "?sections=club", { token: coord });
+ok("and the roster now keeps the new one, not the old", r.j.people.find(p => p.id === helperId).code, newCode);
+r = await call("POST", "?a=login", { body: { code: newCode } });
 const helper2 = r.j.token;
 r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: false } });
 ok("the coordinator can take the training flag off someone", r.j.person.trained, false);

@@ -907,6 +907,7 @@ var cleanTimes = (o, from) => {
 var clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
 var sectionFallback = () => ({ required: DEFAULT_REQUIRED, requiredTrained: DEFAULT_REQUIRED_TRAINED, requiredTrainedEvents: DEFAULT_REQUIRED_TRAINED_EVENTS, slots: {} });
 var pub = (p) => ({ id: p.id, name: p.name, sections: p.sections || [], trained: !!p.trained, secretary: !!p.secretary });
+var pubFull = (p) => ({ ...pub(p), code: p.code || null });
 var isKey = (k) => typeof k === "string" && /^[a-z0-9-]{1,32}$/.test(k);
 var isSlotId = (s) => typeof s === "string" && /^[me]:(\d{4}-\d{2}-\d{2}(:.{1,140})?|[a-f0-9]{8,32})$/.test(s);
 var cleanName = (n) => String(n || "").trim().replace(/\s+/g, " ").slice(0, 60);
@@ -932,6 +933,7 @@ function makePerson(b, sec, code) {
     trained: !!b.trained,
     secretary: !!b.secretary,
     codeHash: codeHash(sec, code),
+    code,
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
@@ -1113,7 +1115,7 @@ function createHandler(storeFactory) {
         const mine = new Set(me.sections || []);
         const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
-        return json(200, { me: pub(me), people: visible.map(pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
+        return json(200, { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -1279,6 +1281,7 @@ function createHandler(storeFactory) {
             const p = d.people.find((x) => x.id === b.id);
             if (!p) return false;
             p.codeHash = codeHash(sec, code);
+            p.code = code;
             return d;
           });
           return json(200, { code });

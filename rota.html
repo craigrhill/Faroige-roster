@@ -19,19 +19,20 @@
   <div id="err" class="banner err" hidden></div>
 
   <section id="gate" hidden>
-    <h1>Sign in</h1>
-    <p class="muted">Open the link the coordinator sent you and you are in, nothing to type. If you only have the code from it, put it in here. Either way this phone stays signed in for twelve months.</p>
+    <h1>Leaders: use your own link</h1>
+    <div class="banner good"><b>The Foróige Secretary sent you a WhatsApp message with a link that is yours alone.</b> Open that link and you are straight in, nothing to type, and this phone stays signed in for twelve months. Look for the message before doing anything here.</div>
     <div class="card">
+      <p class="small muted" style="margin-bottom:.5rem">Only if you have the code from that message and not the link itself:</p>
       <div class="row"><input type="text" id="code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false"><button class="btn primary" onclick="signIn($('code').value, 'gateMsg', load)">Sign in</button></div>
       <p class="msg" id="gateMsg"></p>
     </div>
-    <p class="small muted">No link? Ask the coordinator, who keeps the roster. If you are the coordinator, sign in on the <a href="roster.html">roster page</a> with your name and the password.</p>
+    <p class="small muted">No message? Ask the Foróige Secretary, who keeps the roster and can send your link again. Not a leader? The dates are on <a href="events.html">What is on</a>. If you are the Secretary, sign in on the <a href="roster.html">roster page</a> with your name and the password.</p>
   </section>
 
   <section id="app" hidden>
     <div class="row" style="justify-content:space-between;margin:.9rem 0 .2rem">
       <span class="small muted">Signed in as <b id="meName"></b><span id="meRole"></span></span>
-      <span><a id="rosterLink" class="btn quiet" href="roster.html" hidden>Roster</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
+      <span><a class="btn quiet" href="events.html">What is on</a><a id="rosterLink" class="btn quiet" href="roster.html" hidden>Roster</a><button class="btn quiet" onclick="signOut()">Sign out</button></span>
     </div>
 
     <div id="callout" class="banner" hidden></div>
@@ -267,7 +268,9 @@ function pick(k){ try { localStorage.setItem(SK, k); } catch {} render(); }
 function putSection(k, doc){ D.sections[k] = { required: doc.required, requiredTrained: doc.requiredTrained, requiredTrainedEvents: doc.requiredTrainedEvents, slots: doc.slots, updatedAt: doc.updatedAt }; render(); }
 const tick = (k, id, pid, on) => guarded(async () => putSection(k, (await api("POST", "?a=slot", { section: k, id, [on ? "add" : "remove"]: [pid] })).section));
 async function copyShare(id){ try { await navigator.clipboard.writeText($(id).textContent); } catch {} }
-function signOut(msg){ setToken(null); D = null; $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg || ""; $("gateMsg").className = "msg"; }
+// Signing out goes back to the public page. Being signed out by the server
+// stays here and says why.
+function signOut(msg){ setToken(null); D = null; if (!msg) { location.href = homeLink(); return; } $("app").hidden = true; $("gate").hidden = false; $("gateMsg").textContent = msg; $("gateMsg").className = "msg"; }
 onUnauthorized = signOut;
 async function boot(){
   C = await loadContent();

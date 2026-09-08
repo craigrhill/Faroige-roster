@@ -41,11 +41,13 @@ the pages:
   existed and was taken out.
 
 **The coordinator needs only her name and the password.** No code, no link.
-Everybody else gets their own link, shown once on the roster page and sent to
-them however suits, and types nothing at all. Opening it signs that
-phone in for 365 days and the code is taken straight back out of the address
-bar. Taking someone off the roster revokes their sign-in at once, and takes
-them off every night with it. "New link" cancels the old one.
+Everybody else gets their own link, kept beside their name on the roster
+page with a ready-made WhatsApp message to send with it, and types nothing
+at all. Opening it signs that phone in for 365 days and the code is taken
+straight back out of the address bar. The same link can be sent again any
+time. Taking someone off the roster revokes their sign-in at once, and takes
+them off every night with it. "New link" cancels the old one; it is for a
+link that has got out, not for a lost one.
 
 A link is as good as a code: whoever holds it is that person, so it is worth
 sending each one to that person rather than to a group.
@@ -145,9 +147,11 @@ parent is the likeliest. From there:
 
 * **Admin**, at the foot, goes to the roster for the coordinator's name and
   password.
-* **Your rota** appears at the foot as well, but only for a browser that is
-  already signed in. A parent never sees it.
+* **Leaders' rota**, beside it, goes to the rota. A browser already signed in
+  sees it as Your rota and lands straight on the tabs; anyone else is told to
+  use the link the Foróige Secretary sent them by WhatsApp.
 * A **volunteer's own link** goes straight to the rota and signs them in.
+* **Sign out**, on the rota or the roster, comes back here.
 
 A browser is one person at a time, and a personal link deliberately beats
 whoever was signed in before, so testing two roles at once wants a private

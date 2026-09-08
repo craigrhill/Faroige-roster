@@ -7,6 +7,8 @@
     "short": "Building",
     "note": "Building specific training from the ETB. One leader on every club night must hold it. Events are away from the building and do not need one."
   },
+  "message": "Hi {name}, here is your link to the {club} rota for the term:\n\n{link}\n\nThis link is unique to you, so please keep it to yourself. Open it and you can put yourself down for the club nights and events you are free to volunteer at. It is first come, first served: once a night has the leaders it needs it closes, so grab the dates that suit you early. Your phone stays signed in, so keep this message in case you need the link again.\n\nThanks, {from}",
+  "_message": "What the coordinator sends with each person's link. {name}, {link}, {from} and {club} are filled in. Blank lines are \\n.",
   "settings": {
     "sections": [
       {
