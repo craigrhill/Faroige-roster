@@ -175,9 +175,12 @@ codes were kept has `code: null` and the row says so. The store is private
 and the token secret already sits in the same store, so keeping the code in
 clear there adds nothing an attacker with the store did not already have.
 
-**Copy message** fills the template in `rota-config.json` (`message`, with
-`{name}`, `{link}`, `{from}`, `{club}`) and signs it with the coordinator's
-own name from the store. The wording is the club's to change there.
+**Copy message** fills a template with `{name}`, `{link}`, `{from}` and
+`{club}`, signed with the coordinator's own name. The wording is hers: the
+roster shows it in a box with a live preview, saved under the store key
+`message` (`?a=message`, coordinator only, blank means the standard wording
+from `rota-config.json`). The page only refills the box when it is not being
+edited, so a save elsewhere on the page cannot wipe half-typed text.
 
 **Signing out goes to the public page.** `signOut()` with no message is the
 button, and it navigates to `homeLink()`; with a message it is the server

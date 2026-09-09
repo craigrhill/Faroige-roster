@@ -42,7 +42,8 @@ the pages:
 
 **The coordinator needs only her name and the password.** No code, no link.
 Everybody else gets their own link, kept beside their name on the roster
-page with a ready-made WhatsApp message to send with it, and types nothing
+page with a ready-made WhatsApp message to send with it (worded on the
+roster page by the coordinator, with a preview), and types nothing
 at all. Opening it signs that phone in for 365 days and the code is taken
 straight back out of the address bar. The same link can be sent again any
 time. Taking someone off the roster revokes their sign-in at once, and takes
