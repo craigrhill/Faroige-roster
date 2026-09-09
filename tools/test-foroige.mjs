@@ -358,6 +358,23 @@ r = await call("POST", "?a=login", { body: { code: helperCode } }); ok("old code
 r = await call("POST", "?a=login", { body: { code: newCode } });    ok("new code works", r.status, 200);
 r = await call("GET", "?sections=club", { token: coord });
 ok("and the roster now keeps the new one, not the old", r.j.people.find(p => p.id === helperId).code, newCode);
+// The message that goes with a link is the coordinator's to word.
+ok("the coordinator's GET carries the message wording, blank until she sets one", r.j.message, "");
+const volTok = (await call("POST", "?a=login", { body: { code: newCode } })).j.token;
+r = await call("POST", "?a=message", { token: volTok, body: { text: "Hi {name}" } });
+ok("a volunteer cannot set it", r.status, 403);
+r = await call("POST", "?a=message", { token: coord, body: { text: "  Hi {name}, your link: {link}\r\nFrom {from}  " } });
+ok("the coordinator can, and it comes back trimmed with plain newlines", [r.status, r.j.message], [200, "Hi {name}, your link: {link}\nFrom {from}"]);
+r = await call("GET", "?sections=club", { token: coord });
+ok("and her GET carries it from then on", r.j.message, "Hi {name}, your link: {link}\nFrom {from}");
+r = await call("GET", "?sections=club", { token: volTok });
+ok("a volunteer's GET does not", "message" in r.j, false);
+r = await call("POST", "?a=message", { token: coord, body: { text: "x".repeat(2001) } });
+ok("too long is refused", r.status, 400);
+r = await call("POST", "?a=message", { token: coord, body: { text: 5 } });
+ok("and so is anything that is not text", r.status, 400);
+r = await call("POST", "?a=message", { token: coord, body: { text: "" } });
+ok("blank puts the standard wording back", [r.status, r.j.message], [200, ""]);
 r = await call("POST", "?a=login", { body: { code: newCode } });
 const helper2 = r.j.token;
 r = await call("POST", "?a=person-update", { token: coord, body: { id: trainedId, trained: false } });

@@ -896,6 +896,8 @@ function readToken(sec, token) {
 }
 var rosterFallback = () => ({ people: [] });
 var calendarFallback = () => ({ entries: [] });
+var messageFallback = () => ({ text: "" });
+var MAX_MESSAGE = 2e3;
 var MAX_ENTRIES = 200;
 var isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
 var isTime = (t) => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
@@ -1115,7 +1117,12 @@ function createHandler(storeFactory) {
         const mine = new Set(me.sections || []);
         const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
-        return json(200, { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
+        const out = { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } };
+        if (canManage) {
+          const m = await readDoc(store, "message", messageFallback);
+          out.message = m.doc.text || "";
+        }
+        return json(200, out);
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -1186,6 +1193,16 @@ function createHandler(storeFactory) {
           return d;
         });
         return json(200, { section: doc });
+      }
+      if (a === "message") {
+        if (typeof b.text !== "string") return fail(400, "The message must be text.");
+        const text = b.text.replace(/\r\n?/g, "\n").trim();
+        if (text.length > MAX_MESSAGE) return fail(400, `Keep the message under ${MAX_MESSAGE} characters.`);
+        const doc = await update(store, "message", messageFallback, (d) => {
+          d.text = text;
+          return d;
+        });
+        return json(200, { message: doc.text });
       }
       if (a === "calendar") {
         const rows = Array.isArray(b.entries) ? b.entries : null;

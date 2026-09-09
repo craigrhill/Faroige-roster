@@ -76,9 +76,11 @@ async function copyText(text, btn){
   return done;
 }
 // The message that goes with somebody's link, ready to paste into WhatsApp.
-function messageFor(config, person, code, from){
+// The wording is the coordinator's own if she has set one, else the standard
+// one from rota-config.json.
+function messageFor(config, person, code, from, wording){
   const fill = { name: person.name, link: codeLink(code), from: from || "", club: (config.club || {}).name || "the club" };
-  return String(config.message || "").replace(/\{(name|link|from|club)\}/g, (m, k) => fill[k]);
+  return String(wording || config.message || "").replace(/\{(name|link|from|club)\}/g, (m, k) => fill[k]);
 }
 // Where the whole thing starts: the public page. Signing out lands there.
 const homeLink = () => pageLink("events");

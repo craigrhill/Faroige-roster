@@ -183,6 +183,7 @@ select:disabled{color:var(--stone-400);background:var(--stone-50)}
 .btn.tiny{padding:.3em .8em;font-size:.82rem}
 .btn:disabled{opacity:.7;cursor:default}
 /* Who is down for what: one row a person, the ones on nothing picked out. */
+.preview{white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.9rem;line-height:1.5;background:var(--green-100);border-radius:12px;padding:.8rem 1rem;margin:0;color:var(--ink)}
 .tablewrap{overflow-x:auto}
 table.load{width:100%;border-collapse:collapse;font-size:.92rem}
 table.load th,table.load td{text-align:left;padding:.45rem .6rem;border-top:1px solid var(--stone-100);white-space:nowrap}

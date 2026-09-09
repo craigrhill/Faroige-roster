@@ -41,6 +41,9 @@
 //                   "m" for a club night and "e" for an event; that is what
 //                   decides whether the training rule applies. While this is
 //                   empty the pages fall back to rota-config.json.
+//   message         { text }  The message the coordinator sends with a link,
+//                   as she has worded it. Empty means the wording in
+//                   rota-config.json. Only her GET carries it.
 //   section/<key>   { required, requiredTrained, requiredTrainedEvents,
 //                     startTime, endTime,
 //                     slots: { <slotId>: { who: [personId] } } }
@@ -76,6 +79,8 @@
 //   POST   ?a=people   {people:[{name,sections,trained}]}      { added, skipped }  coordinator
 //   POST   ?a=person-update {id,name?,sections?,trained?,secretary?}       { person }
 //   POST   ?a=person-remove {id,sections}                     { people }
+//   POST   ?a=message  {text}                                 { message }  coordinator
+//                        Blank puts the standard wording back.
 //   POST   ?a=recode   {id}                                   { code }   coordinator
 //                        A fresh code: the old link stops working.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -180,6 +185,8 @@ function readToken(sec, token) {
 // ---- shapes and validation ----
 const rosterFallback = () => ({ people: [] });
 const calendarFallback = () => ({ entries: [] });
+const messageFallback = () => ({ text: "" });
+const MAX_MESSAGE = 2000;
 const MAX_ENTRIES = 200;
 const isDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d + "T12:00:00Z"));
 const isTime = (t) => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
@@ -365,7 +372,9 @@ export function createHandler(storeFactory) {
         const mine = new Set(me.sections || []);
         const visible = canManage ? roster.doc.people : roster.doc.people.filter((p) => p.id === me.id || (p.sections || []).some((k) => mine.has(k)));
         const cal = await readDoc(store, "calendar", calendarFallback);
-        return json(200, { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } });
+        const out = { me: pub(me), people: visible.map(canManage ? pubFull : pub), sections, calendar: { entries: cal.doc.entries || [], updatedAt: cal.doc.updatedAt || null } };
+        if (canManage) { const m = await readDoc(store, "message", messageFallback); out.message = m.doc.text || ""; }
+        return json(200, out);
       }
       if (req.method !== "POST") return fail(405, "Method not allowed.");
       const b = await body(req);
@@ -451,6 +460,14 @@ export function createHandler(storeFactory) {
       // holds it while it is being edited, and one write keeps the etag guard
       // meaningful: two coordinators editing at the same moment conflict and
       // retry rather than interleaving half of each other's changes.
+      if (a === "message") {
+        if (typeof b.text !== "string") return fail(400, "The message must be text.");
+        const text = b.text.replace(/\r\n?/g, "\n").trim();
+        if (text.length > MAX_MESSAGE) return fail(400, `Keep the message under ${MAX_MESSAGE} characters.`);
+        const doc = await update(store, "message", messageFallback, (d) => { d.text = text; return d; });
+        return json(200, { message: doc.text });
+      }
+
       if (a === "calendar") {
         const rows = Array.isArray(b.entries) ? b.entries : null;
         if (!rows) return fail(400, "No calendar given.");

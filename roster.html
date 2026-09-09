@@ -57,6 +57,17 @@
       </div>
     </div>
 
+    <div class="card" id="msgCard" hidden>
+      <h2>The message that goes with a link</h2>
+      <p class="small muted">This is what Copy message puts on your phone, with the blanks filled in. Change the wording here if it is not how you would say it. <b>{name}</b> becomes the person's name, <b>{link}</b> their link, <b>{from}</b> your name and <b>{club}</b> the club's.</p>
+      <div class="add">
+        <textarea id="msgText" spellcheck="true" aria-label="The message" oninput="msgChanged()"></textarea>
+        <div class="row"><button class="btn primary" id="msgSave" onclick="saveMessage()">Save the message</button><button class="btn quiet" onclick="resetMessage()">Back to the standard wording</button><span class="msg" id="msgMsg" style="margin:0"></span></div>
+      </div>
+      <p class="small muted" style="margin:.8rem 0 .3rem">How it reads, sent to someone called Mary:</p>
+      <pre class="preview" id="msgPreview"></pre>
+    </div>
+
     <div class="card" id="loadCard" hidden>
       <h2>Who is down for what</h2>
       <p class="small muted" id="loadNote"></p>
@@ -124,7 +135,28 @@ function linkRow(p){
 }
 const copyLink = (id, btn) => { const p = personById(id); if (p && p.code) copyText(codeLink(p.code), btn); };
 // The whole message, link and all, signed by whoever is sending it.
-const copyMessage = (id, btn) => { const p = personById(id); if (p && p.code) copyText(messageFor(C, p, p.code, D.me.name), btn); };
+const copyMessage = (id, btn) => { const p = personById(id); if (p && p.code) copyText(messageFor(C, p, p.code, D.me.name, wording()), btn); };
+// The wording in use: hers from the store, or the standard one.
+const wording = () => (D.message && D.message.trim()) ? D.message : C.message;
+// The box is only refilled when it is not being edited, so a reload from
+// some other save on the page cannot wipe what she is typing.
+let msgDirty = false;
+function renderMessage(){
+  if (!msgDirty) $("msgText").value = wording();
+  previewMessage();
+}
+function previewMessage(){
+  $("msgPreview").textContent = messageFor(C, { name: "Mary" }, "XXXX-XXXX", D.me.name, $("msgText").value.trim() || C.message);
+}
+function msgChanged(){ msgDirty = true; $("msgSave").textContent = "Save the message"; $("msgMsg").textContent = ""; previewMessage(); }
+const saveMessage = () => guarded(async () => {
+  const text = $("msgText").value;
+  const r = await api("POST", "?a=message", { text });
+  D.message = r.message; msgDirty = false;
+  $("msgSave").textContent = "Saved"; $("msgMsg").textContent = r.message ? "" : "Blank, so the standard wording is in use.";
+  renderMessage();
+});
+function resetMessage(){ $("msgText").value = C.message; msgDirty = true; previewMessage(); $("msgSave").textContent = "Save the message"; }
 
 // How much each person has taken on, counted over the nights still to come
 // that have not been called off. Somebody on nothing yet is the one to chase,
@@ -165,7 +197,8 @@ function render(){
   $("calCard").hidden = !manage;
   $("numsCard").hidden = !manage;
   $("loadCard").hidden = !manage;
-  if (manage) { renderNums(); renderCal(); renderLoad(); }
+  $("msgCard").hidden = !manage;
+  if (manage) { renderNums(); renderCal(); renderLoad(); renderMessage(); }
   $("newSecs").hidden = !many();
   const people = (D.people || []).slice().sort(byName);
   const trained = people.filter(p => p.trained).length;
