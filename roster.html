@@ -270,7 +270,7 @@ function summary(e, i){
   const n = def(e), need = e.need ?? n.need, needT = e.needTrained ?? n.needTrained;
   return `<div class="slot-head">
       <div><span class="when">${esc(e.date ? fmt(e.date) : "No date")}</span> <span class="sub">${esc(e.title || "Not named yet")}${sub ? ", " + esc(sub) : ""}</span></div>
-      <span class="rowtools">${e.off ? `<span class="status off">Called off</span>` : ""}<button class="btn quiet" onclick="toggleRow(${i})">Edit</button><button class="btn quiet" title="Remove" onclick="removeEntry(${i})">&#x2715;</button></span>
+      <span class="rowtools">${e.off ? `<span class="status off">Called off</span>` : (e.endDate || e.date) < iso(new Date()) ? `<span class="status past">Past</span>` : ""}<button class="btn quiet" onclick="toggleRow(${i})">Edit</button><button class="btn quiet" title="Remove" onclick="removeEntry(${i})">&#x2715;</button></span>
     </div>
     ${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}
     <p class="rowneeds">${need} leader${need === 1 ? "" : "s"}${needT ? `, ${needT} with ${esc(TRAIN.short)}` : ""}${e.need == null && e.needTrained == null ? "" : ` <span class="custom">just this one</span>`}</p>`;
@@ -362,7 +362,7 @@ function renderCal(){
       <label class="pick"><input type="checkbox" ${e.off ? "checked" : ""} onchange="setEntry(${i},'off',this.checked)"><span>Called off</span></label>
       <span style="margin-left:auto"><button class="btn" onclick="toggleRow(${i})">Done</button></span>
     </div>
-  </div>` : `<div class="entry">${summary(e, i)}</div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
+  </div>` : `<div class="entry${(e.endDate || e.date) < iso(new Date()) ? " past" : ""}">${summary(e, i)}</div>`).join("") || `<div class="empty">Nothing on the calendar.</div>`;
 }
 const saveCal = () => guarded(async () => {
   $("calMsg").textContent = ""; $("calMsg").className = "msg";

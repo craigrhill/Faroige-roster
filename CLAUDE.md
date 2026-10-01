@@ -199,6 +199,15 @@ proof somebody turned up, so it must not drop out of the count the morning
 after (it did, once). The rota itself still hides past nights; the ticks
 stay in the store and this table reads them.
 
+**Past nights stay on every page**, under an "Already happened" rule after
+the nights to come, most recent first, greyed, tagged Past. On the rota a
+volunteer can neither take nor drop one and sees who was on it; the
+coordinator keeps her pull-downs there, to put the record right. Gaps, the
+callout and the chasing page's counts only ever look ahead. `nights(k)` on
+the rota returns the whole term with a `past` flag; the parents' page splits
+`sorted` into `list` and `gone` the same way. The function does not refuse a
+volunteer's tick on a past night; the page simply offers no way to make one.
+
 **The rota is three tabs**, remembered in `localStorage` under
 `foroige-tab`: Gaps (what is still short, each row offering itself to anyone
 who can take it), Availability (every night, with the controls), and My

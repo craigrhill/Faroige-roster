@@ -101,30 +101,34 @@ function iso(d){ return d.toISOString().slice(0, 10); }
 // The calendar the coordinator keeps, if there is one. Until they have saved
 // anything it falls back to rota-config.json, which is how the club nights got
 // here in the first place.
-function upcoming(k){
+// Every night in the term, past ones included and marked as such. A night
+// that has happened stays on the page greyed out, below the ones to come:
+// it is the record of who did what, and it must not vanish the morning after.
+function nights(k){
   const section = C.settings.sections.find(x => x.key === k) || {};
   const today = new Date(); today.setHours(12, 0, 0, 0);
   const t = iso(today);
   const out = [], wd = DAYS[(section.day || "").toLowerCase()];
   const nightSub = (place) => [section.time, place || section.venue].filter(Boolean).join(", ");
+  const isPast = (e) => (e.endDate || e.date) < t;
   const entries = (D.calendar && D.calendar.entries) || [];
   if (entries.length) {
-    entries.filter(e => (e.endDate || e.date) >= t).forEach(e => out.push({
-      id: e.kind + ":" + e.id, date: e.date, title: e.title, details: e.details || "",
+    entries.forEach(e => out.push({
+      id: e.kind + ":" + e.id, date: e.date, title: e.title, details: e.details || "", past: isPast(e),
       sub: e.kind === "e" ? [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ") : nightSub(e.location),
       kind: e.kind === "e" ? "event" : "meeting" }));
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: nightSub(), details: "", kind: "meeting" });
+  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: nightSub(), details: "", kind: "meeting", past: date < t });
   // From the setup file: a weekday, which fills the next eight weeks, or a
   // list of confirmed dates, or both.
   if (wd !== undefined) {
     const d = new Date(today); while (d.getDay() !== wd) d.setDate(d.getDate() + 1);
     for (let i = 0; i < 8; i++) { out.push(night(iso(d))); d.setDate(d.getDate() + 7); }
   }
-  (section.dates || []).filter(date => date >= t && !out.some(x => x.id === "m:" + date)).forEach(date => out.push(night(date)));
-  (C.events || []).filter(e => (e.endDate || e.date) >= t && (e.section === k || !e.section || e.section === "all"))
-    .forEach(e => out.push({ id: "e:" + e.date + ":" + e.title, date: e.date, title: e.title, details: e.details || "", sub: [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", "), kind: "event" }));
+  (section.dates || []).filter(date => !out.some(x => x.id === "m:" + date)).forEach(date => out.push(night(date)));
+  (C.events || []).filter(e => (e.section === k || !e.section || e.section === "all"))
+    .forEach(e => out.push({ id: "e:" + e.date + ":" + e.title, date: e.date, title: e.title, details: e.details || "", past: isPast(e), sub: [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", "), kind: "event" }));
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 const personById = id => (D.people || []).find(p => p.id === id);
@@ -178,7 +182,8 @@ function render(){
   if (many) $("chips").innerHTML = C.settings.sections.map(x => `<button class="chip ${x.key === k ? "on" : ""}" onclick="pick('${esc(x.key)}')">${esc(x.name)}</button>`).join("");
   // With several clubs a person covers the ones the coordinator ticked. With
   // one club there is nothing to tick, so everyone on the roster covers it.
-  const slots = upcoming(k), names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byTrainedThenName);
+  const all = nights(k), slots = all.filter(x => !x.past), past = all.filter(x => x.past);
+  const names = (D.people || []).filter(p => !many || (p.sections || []).includes(k)).sort(byTrainedThenName);
   const live = slots.filter(x => !offOf(x.id));
   const bad = live.map(x => ({ x, st: state(k, x.id) })).filter(o => !o.st.ok);
   // Worth calling out separately: nights that have the leaders but nobody trained.
@@ -212,6 +217,7 @@ function render(){
     const custom = entryOf(x.id).need > 0 || Number.isFinite(entryOf(x.id).needTrained);
     const off = offOf(x.id);
     const status = off ? `<span class="status off">Called off</span>`
+      : x.past ? `<span class="status past">${st.n ? `${st.n} on it` : "Nobody on it"}</span>`
       : st.ok ? `<span class="status ok">Covered</span>`
       : st.shortPeople ? `<span class="status gap">${st.n} of ${st.need}</span>`
       : `<span class="status warn">No ${esc(TRAIN.short)}</span>`;
@@ -222,7 +228,9 @@ function render(){
     // because that is the one a night cannot go ahead without. Everyone else
     // can only put themselves on, so they get a button instead of a list.
     const onIt = listed.filter(p => s.who.includes(p.id)), free = listed.filter(p => !s.who.includes(p.id));
-    const chips = onIt.map(p => { const can = boss || p.id === me.id;
+    // Once a night has happened only the coordinator changes who was on it,
+    // to put the record right. Everyone else just sees it.
+    const chips = onIt.map(p => { const can = boss || (p.id === me.id && !x.past);
       return `<span class="who-chip${p.id === me.id ? " me" : ""}">${esc(p.name)}${p.id === me.id ? " (you)" : ""}${trainedTag(p)}${can ? `<button class="x" title="Take ${esc(p.name)} off this night" onclick="tick('${esc(k)}','${esc(x.id)}','${esc(p.id)}',false)">&#x2715;</button>` : ""}</span>`; }).join("");
     const picker = (label, arr) => `<label class="pick"><span>${esc(label)}</span><select ${arr.length ? "" : "disabled"} onchange="if(this.value)tick('${esc(k)}','${esc(x.id)}',this.value,true);this.selectedIndex=0"><option value="">${arr.length ? "add one" : "all on already"}</option>${arr.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>`;
     const place = placeForMe(k, x.id);
@@ -234,12 +242,12 @@ function render(){
     }[place];
     const controls = boss
       ? `<div class="picks">${picker(TRAIN.label, free.filter(p => p.trained))}${picker("Other leaders", free.filter(p => !p.trained))}</div>`
-      : `<div class="picks">${mine}</div>`;
-    return `<div class="slot${off ? "" : place === "can" ? " open" : !st.ok ? " short" : ""}">
+      : x.past ? "" : `<div class="picks">${mine}</div>`;
+    return `<div class="slot${x.past ? " past" : off ? "" : place === "can" ? " open" : !st.ok ? " short" : ""}">
       <div class="slot-head"><div><span class="when">${esc(fmt(x.date))}</span> <span class="sub">${esc(x.title)}${x.sub ? ", " + esc(x.sub) : ""}</span></div>${status}</div>
       ${x.details ? `<p class="detail">${esc(x.details)}</p>` : ""}
       ${off ? "" : `<div class="who">
-        <div class="onit">${chips || `<span class="empty">${listed.length ? "Nobody on it yet." : "Nobody on the roster for " + esc(sectionName(k)) + " yet."}</span>`}</div>
+        <div class="onit">${chips || `<span class="empty">${x.past ? "Nobody was down for it." : listed.length ? "Nobody on it yet." : "Nobody on the roster for " + esc(sectionName(k)) + " yet."}</span>`}</div>
         ${listed.length ? controls : ""}
       </div>`}
       <div class="slot-foot">
@@ -249,17 +257,21 @@ function render(){
     </div>`;
   };
 
-  $("slots").innerHTML = slots.map(slotCard).join("") || `<div class="empty">Nothing coming up.</div>`;
+  const pastRule = (n) => `<h3 class="month">Already happened${n ? ` (${n})` : ""}</h3>`;
+  $("slots").innerHTML = (slots.map(slotCard).join("") || `<div class="empty">Nothing more coming up this term.</div>`)
+    + (past.length ? pastRule(past.length) + past.slice().reverse().map(slotCard).join("") : "");
 
-  // My calendar: the nights this person is actually down for, and going ahead.
-  // A night called off is not one of theirs to plan around.
-  const mineList = slots.filter(x => !offOf(x.id) && slotOf(k, x.id).who.includes(me.id));
-  $("tallyMine").textContent = mineList.length || "";
-  $("mineNote").textContent = mineList.length
-    ? `${mineList.length} night${mineList.length === 1 ? "" : "s"} between now and the end of the term. Anything called off is left out.`
+  // My calendar: the nights this person is down for, the ones to come first
+  // and then the ones done, so the term adds up. A night called off is not
+  // one of theirs either way.
+  const onIt = (x) => !offOf(x.id) && slotOf(k, x.id).who.includes(me.id);
+  const mineList = slots.filter(onIt), mineDone = past.filter(onIt);
+  $("tallyMine").textContent = (mineList.length + mineDone.length) || "";
+  $("mineNote").textContent = (mineList.length || mineDone.length)
+    ? `${mineList.length} night${mineList.length === 1 ? "" : "s"} to come${mineDone.length ? `, ${mineDone.length} done` : ""}. Anything called off is left out.`
     : "";
-  $("mines").innerHTML = mineList.map(slotCard).join("")
-    || `<div class="empty">You are not down for anything yet. Availability is where you put yourself on a night.</div>`;
+  $("mines").innerHTML = (mineList.map(slotCard).join("") || (mineDone.length ? `<div class="empty">Nothing more to come. Thanks for the nights you did.</div>` : `<div class="empty">You are not down for anything yet. Availability is where you put yourself on a night.</div>`))
+    + (mineDone.length ? pastRule(mineDone.length) + mineDone.slice().reverse().map(slotCard).join("") : "");
 }
 async function load(){ showErr(""); D = await api("GET", "?sections=" + keys().join(",")); $("gate").hidden = true; $("app").hidden = false; render(); }
 // On a rejected change, put the inputs back to what the server actually holds.

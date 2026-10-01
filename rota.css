@@ -152,6 +152,16 @@ textarea{width:100%;min-height:7rem;resize:vertical;line-height:1.5}
 .status.ok{background:var(--green-100);color:#1B5E45}
 .status.warn{background:var(--amber-soft);color:#7A4A00}
 .status.off{background:var(--stone-100);color:var(--stone-600)}
+.status.past{background:var(--stone-100);color:var(--stone-400)}
+/* A night that has happened: still there, plainly in the past. */
+.slot.past .when,.slot.past .sub,.slot.past .detail,.slot.past .slot-foot{color:var(--stone-400)}
+.slot.past .who-chip{background:var(--stone-50);color:var(--stone-600)}
+.entry.past .when,.entry.past .sub,.entry.past .rowneeds{color:var(--stone-400)}
+.ev.past .evtitle,.ev.past .evsub,.ev.past .evdate{color:var(--stone-400)}
+.ev.past{background:var(--stone-50);box-shadow:none}
+.month.pastrule{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--stone-200)}
+.cell.past{background:var(--stone-50);cursor:pointer}
+.cell.past .what,.cell.past .n{color:var(--stone-400)}
 .who{margin-top:.5rem;display:grid;gap:.55rem;justify-items:start}
 .onit{display:flex;flex-wrap:wrap;gap:.4rem}
 .who-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.92rem;background:var(--stone-100);border-radius:999px;padding:.25em .35em .25em .8em}

@@ -110,7 +110,11 @@ function statusOf(e){
 function render(){
   const section = C.settings.sections.find(x => x.key === KEY) || {};
   const today = new Date(); today.setHours(12, 0, 0, 0);
-  const list = (D.entries || []).filter(e => (e.endDate || e.date) >= iso(today)).sort((a, b) => a.date.localeCompare(b.date));
+  // Everything in the term, the nights to come first and then, under their
+  // own heading, the ones already past: still there to look back on, greyed.
+  const t = iso(today);
+  const sorted = (D.entries || []).slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => ({ ...e, past: (e.endDate || e.date) < t }));
+  const list = sorted.filter(e => !e.past), gone = sorted.filter(e => e.past);
   $("title").textContent = GAPS ? "Where we still need leaders" : "What is on";
   $("strap").textContent = GAPS ? "Leaders needed" : "What is on";
   $("mode").hidden = !GAPS;
@@ -138,10 +142,10 @@ function render(){
   const ph = document.querySelector(".printhead");
   ph.innerHTML = `<b>${esc((C.club || {}).name || "")}</b> &middot; ${esc($("title").textContent)} &middot; printed ${esc(new Date().toLocaleDateString("en-IE", { day: "numeric", month: "long", year: "numeric" }))}`;
   ph.hidden = false;
-  if (VIEW === "calendar") return renderGrid(list, section);
+  if (VIEW === "calendar") return renderGrid(sorted, section);
 
   let month = "";
-  $("list").innerHTML = list.map((e, i) => {
+  const card = (e, i) => {
     const st = statusOf(e), head = MONTH(e.date);
     const rule = head !== month ? `<h2 class="month">${esc(head)}</h2>` : "";
     month = head;
@@ -152,18 +156,20 @@ function render(){
     const when = e.endDate ? `${d.getDate()} ${d.toLocaleDateString("en-IE", { month: "short" })} to ${fmt(e.endDate).replace(/^\w+, /, "")}`
       : d.toLocaleDateString("en-IE", { weekday: "long" });
     const sub = [when, runsAt(e, section), where].filter(Boolean).join(" &middot; ");
-    const more = e.details || (GAPS && st.short);
-    return `${rule}<article data-date="${esc(e.date)}" class="ev${e.off ? " isoff" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
+    const more = e.details || (GAPS && st.short && !e.past);
+    return `${rule}<article data-date="${esc(e.date)}" class="ev${e.off ? " isoff" : ""}${e.past ? " past" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
       <div class="evdate"><b>${d.getDate()}</b><span>${esc(d.toLocaleDateString("en-IE", { month: "short" }).toUpperCase())}</span></div>
       <div class="evbody">
-        <h3 class="evtitle">${esc(e.title)} ${kindBadge(e)}${e.off ? `<span class="badge off">Called off</span>` : ""}</h3>
+        <h3 class="evtitle">${esc(e.title)} ${kindBadge(e)}${e.off ? `<span class="badge off">Called off</span>` : e.past ? `<span class="badge off">Past</span>` : ""}</h3>
         <p class="evsub">${sub}</p>
-        <div class="evmore" hidden>${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}${GAPS && st.short ? `<p class="detail">Still needs ${st.text.replace(/^Needs /, "")}. Tell the club if you can take it.</p>` : ""}</div>
+        <div class="evmore" hidden>${e.details ? `<p class="detail">${esc(e.details)}</p>` : ""}${GAPS && st.short && !e.past ? `<p class="detail">Still needs ${st.text.replace(/^Needs /, "")}. Tell the club if you can take it.</p>` : ""}</div>
       </div>
-      ${GAPS && !e.off ? `<span class="status ${st.cls}">${esc(st.text)}</span>` : ""}
+      ${GAPS && !e.off && !e.past ? `<span class="status ${st.cls}">${esc(st.text)}</span>` : ""}
       ${more ? `<span class="chev" aria-hidden="true">&rsaquo;</span>` : ""}
     </article>`;
-  }).join("") || `<div class="card"><div class="empty">Nothing coming up yet.</div></div>`;
+  };
+  $("list").innerHTML = (list.map(card).join("") || `<div class="card"><div class="empty">${gone.length ? "Nothing more coming up this term." : "Nothing coming up yet."}</div></div>`)
+    + (gone.length ? `<h2 class="month pastrule">Already happened</h2>` + (month = "", gone.slice().reverse().map(card).join("")) : "");
 
   // The rota is always a step away for a leader. A phone already signed in
   // gets called by its own name.
@@ -190,7 +196,7 @@ function renderGrid(list, section){
       const on = evs.filter(e => e.date <= date && (e.endDate || e.date) >= date);
       if (!on.length) { cells.push(`<div class="cell"><span class="n">${d}</span></div>`); continue; }
       const st = statusOf(on[0]);
-      const cls = on[0].off ? "isoff" : GAPS && st.short ? "short" : "has";
+      const cls = on[0].off ? "isoff" : on[0].past ? "past" : GAPS && st.short ? "short" : "has";
       cells.push(`<div class="cell ${cls}" onclick="jumpTo('${esc(on[0].date)}')" role="button" tabindex="0"
         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();jumpTo('${esc(on[0].date)}')}"
         title="${esc(on.map(e => e.title).join(", "))}"><span class="n">${d}</span><span class="what">${esc(on[0].title)}</span></div>`);
