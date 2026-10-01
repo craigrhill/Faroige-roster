@@ -161,10 +161,16 @@ function resetMessage(){ $("msgText").value = C.message; msgDirty = true; previe
 // How much each person has taken on, counted over the nights still to come
 // that have not been called off. Somebody on nothing yet is the one to chase,
 // so that row is marked.
+// How much each person has taken on over the whole term, past nights
+// included: a night that has happened is the clearest proof somebody turned
+// up, so it must not fall out of the count the morning after. Only a night
+// called off is left out. Somebody on nothing at all is the one to chase,
+// so that row is marked.
 function loadOf(){
   const t = iso(new Date());
   const cal = (calFromServer().length || (D.calendar && D.calendar.updatedAt)) ? calFromServer() : fromConfig().map((e, i) => ({ ...e, id: e.kind === "m" ? e.date : e.date + ":" + e.title }));
-  const live = cal.filter(e => !e.off && (e.endDate || e.date) >= t);
+  const live = cal.filter(e => !e.off);
+  const done = live.filter(e => (e.endDate || e.date) < t).length;
   const counts = new Map((D.people || []).map(p => [p.id, { nights: 0, events: 0 }]));
   for (const k of keys()) {
     const slots = (D.sections[k] || {}).slots || {};
@@ -173,16 +179,16 @@ function loadOf(){
       for (const id of s.who) { const c = counts.get(id); if (c) c[e.kind === "e" ? "events" : "nights"]++; }
     }
   }
-  return { counts, nights: live.filter(e => e.kind !== "e").length, events: live.filter(e => e.kind === "e").length };
+  return { counts, nights: live.filter(e => e.kind !== "e").length, events: live.filter(e => e.kind === "e").length, done };
 }
 function renderLoad(){
-  const { counts, nights, events } = loadOf();
+  const { counts, nights, events, done } = loadOf();
   const people = (D.people || []).slice().sort(byName);
   const rows = people.map(p => { const c = counts.get(p.id) || { nights: 0, events: 0 }; return { p, ...c, total: c.nights + c.events }; });
   const none = rows.filter(r => r.total === 0).length;
-  $("loadNote").textContent = `${nights} club night${nights === 1 ? "" : "s"} and ${events} event${events === 1 ? "" : "s"} still to come.` + (none ? ` ${none} ${none === 1 ? "person is" : "people are"} down for nothing yet.` : " Everyone is down for something.");
+  $("loadNote").textContent = `${nights} club night${nights === 1 ? "" : "s"} and ${events} event${events === 1 ? "" : "s"} this term, ${done ? `${done} already past` : "none past yet"}. Nights that have happened still count.` + (none ? ` ${none} ${none === 1 ? "person is" : "people are"} down for nothing.` : " Everyone is down for something.");
   $("loadTable").innerHTML = `<thead><tr><th>Leader</th><th>Nights</th><th>Events</th><th>Total</th></tr></thead><tbody>`
-    + rows.map(r => `<tr class="${r.total ? "" : "zero"}"><td>${esc(r.p.name)}${r.p.trained ? ` <span class="tag">${esc(TRAIN.short)}</span>` : ""}</td><td>${r.nights}</td><td>${r.events}</td><td><b>${r.total}</b>${r.total ? "" : `<span class="none">none yet</span>`}</td></tr>`).join("")
+    + rows.map(r => `<tr class="${r.total ? "" : "zero"}"><td>${esc(r.p.name)}${r.p.trained ? ` <span class="tag">${esc(TRAIN.short)}</span>` : ""}</td><td>${r.nights}</td><td>${r.events}</td><td><b>${r.total}</b>${r.total ? "" : `<span class="none">none</span>`}</td></tr>`).join("")
     + `</tbody>`;
 }
 

@@ -192,9 +192,12 @@ rota's gate tells a
 leader to use the WhatsApp link the Foróige Secretary sent, with the code
 box kept underneath as the fallback.
 
-**Who is down for what** on the roster counts each person over the nights
-still to come that are not called off, club nights and events apart, and
-marks anyone at nothing in red. It reads the same slots the rota does.
+**Who is down for what** on the roster counts each person over the whole
+term, past nights included, leaving out only nights called off; club nights
+and events apart, anyone at nothing in red. A night that has happened is
+proof somebody turned up, so it must not drop out of the count the morning
+after (it did, once). The rota itself still hides past nights; the ticks
+stay in the store and this table reads them.
 
 **The rota is three tabs**, remembered in `localStorage` under
 `foroige-tab`: Gaps (what is still short, each row offering itself to anyone
