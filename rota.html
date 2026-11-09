@@ -109,17 +109,22 @@ function nights(k){
   const today = new Date(); today.setHours(12, 0, 0, 0);
   const t = iso(today);
   const out = [], wd = DAYS[(section.day || "").toLowerCase()];
-  const nightSub = (place) => [section.time, place || section.venue].filter(Boolean).join(", ");
+  // The time comes from what the coordinator saved for the club, the same
+  // place the roster and the parents' page read it. The setup file is only
+  // the fallback before anything has been saved; reading it first here was
+  // why the rota went on saying 7:30 after the club had moved to 8.
+  const club = D.sections[k] || {};
+  const nightSub = (e, place) => [runsAt(e, club, section), place || section.venue].filter(Boolean).join(", ");
   const isPast = (e) => (e.endDate || e.date) < t;
   const entries = (D.calendar && D.calendar.entries) || [];
   if (entries.length) {
     entries.forEach(e => out.push({
       id: e.kind + ":" + e.id, date: e.date, title: e.title, details: e.details || "", past: isPast(e),
-      sub: e.kind === "e" ? [e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ") : nightSub(e.location),
+      sub: e.kind === "e" ? [runsAt(e, club, section), e.location, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ") : nightSub(e, e.location),
       kind: e.kind === "e" ? "event" : "meeting" }));
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
-  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: nightSub(), details: "", kind: "meeting", past: date < t });
+  const night = (date) => ({ id: "m:" + date, date, title: section.name || "Club night", sub: nightSub({ kind: "m" }), details: "", kind: "meeting", past: date < t });
   // From the setup file: a weekday, which fills the next eight weeks, or a
   // list of confirmed dates, or both.
   if (wd !== undefined) {

@@ -264,8 +264,7 @@ function summary(e, i){
   const sec0 = C.settings.sections[0] || {};
   const where = e.location || (e.kind === "m" ? sec0.venue : "");
   const clubTimes = D.sections[keys()[0]] || {};
-  const runs = e.startTime ? e.startTime + (e.endTime ? " to " + e.endTime : "")
-    : e.kind === "m" ? (clubTimes.startTime ? clubTimes.startTime + (clubTimes.endTime ? " to " + clubTimes.endTime : "") : sec0.time) : "";
+  const runs = runsAt(e, clubTimes, sec0);
   const sub = [runs, where, e.endDate ? "to " + fmt(e.endDate) : ""].filter(Boolean).join(", ");
   const n = def(e), need = e.need ?? n.need, needT = e.needTrained ?? n.needTrained;
   return `<div class="slot-head">

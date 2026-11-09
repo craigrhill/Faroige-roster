@@ -84,6 +84,28 @@ function messageFor(config, person, code, from, wording){
 }
 // Where the whole thing starts: the public page. Signing out lands there.
 const homeLink = () => pageLink("events");
+// "20:00" as "8:00 pm", and a pair as "8:00 to 9:30 pm". Every page says a
+// time through these, so the rota, the roster and the parents' page agree.
+function clock(t){
+  const [h, m] = t.split(":").map(Number);
+  const suf = h < 12 ? "am" : "pm", hh = h % 12 || 12;
+  return { text: `${hh}:${String(m).padStart(2, "0")}`, suf };
+}
+function span(a, b){
+  if (!a) return "";
+  const s1 = clock(a);
+  if (!b) return `${s1.text} ${s1.suf}`;
+  const s2 = clock(b);
+  return s1.suf === s2.suf ? `${s1.text} to ${s2.text} ${s2.suf}` : `${s1.text} ${s1.suf} to ${s2.text} ${s2.suf}`;
+}
+// When a night or event runs: its own time if it has one, else for a club
+// night the club's saved time, else the time in the setup file.
+function runsAt(e, club, section){
+  if (e.startTime) return span(e.startTime, e.endTime);
+  if (e.kind !== "m") return "";
+  if (club && club.startTime) return span(club.startTime, club.endTime);
+  return (section && section.time) || "";
+}
 // Sign in from the link, if there is one, before falling back to the gate.
 async function signInFromLink(after){
   if (!linkCode) return false;

@@ -199,6 +199,13 @@ proof somebody turned up, so it must not drop out of the count the morning
 after (it did, once). The rota itself still hides past nights; the ticks
 stay in the store and this table reads them.
 
+**Every page says a time through `runsAt()` in rota-lib.js**: a night's own
+time if it has one, else the club's saved time from the store, else the time
+in the setup file. The rota used to read the setup file first, so it went on
+saying 7:30 after the coordinator had moved the club to 8:00 and the roster
+and parents' page had followed. `clock()` and `span()` live there too, so
+"20:00" reads as "8:00 pm" everywhere.
+
 **Past nights stay on every page**, under an "Already happened" rule after
 the nights to come, most recent first, greyed, tagged Past. On the rota a
 volunteer can neither take nor drop one and sees who was on it; the

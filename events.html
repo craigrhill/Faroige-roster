@@ -68,26 +68,7 @@ const MONTH = s => new Date(s + "T12:00:00").toLocaleDateString("en-IE", { month
 
 // 19:30 as people say it, and a range that says "pm" once when both halves
 // share it.
-function clock(t){
-  const [h, m] = t.split(":").map(Number);
-  const suf = h < 12 ? "am" : "pm", hh = h % 12 || 12;
-  return { text: `${hh}:${String(m).padStart(2, "0")}`, suf };
-}
-function span(a, b){
-  if (!a) return "";
-  const s1 = clock(a);
-  if (!b) return `${s1.text} ${s1.suf}`;
-  const s2 = clock(b);
-  return s1.suf === s2.suf ? `${s1.text} to ${s2.text} ${s2.suf}` : `${s1.text} ${s1.suf} to ${s2.text} ${s2.suf}`;
-}
-// What a night runs at: its own times, else the club's, else whatever the
-// setup file says in prose.
-function runsAt(e, section){
-  if (e.startTime) return span(e.startTime, e.endTime);
-  if (e.kind !== "m") return "";
-  if (D.startTime) return span(D.startTime, D.endTime);
-  return section.time || "";
-}
+// clock(), span() and runsAt() come from rota-lib.js, shared with the rota.
 function needOf(e){ return e.need > 0 ? e.need : D.required; }
 function needTOf(e){
   const def = e.kind === "e" ? D.requiredTrainedEvents : D.requiredTrained;
@@ -155,7 +136,7 @@ function render(){
     // where. Whichever of those is known.
     const when = e.endDate ? `${d.getDate()} ${d.toLocaleDateString("en-IE", { month: "short" })} to ${fmt(e.endDate).replace(/^\w+, /, "")}`
       : d.toLocaleDateString("en-IE", { weekday: "long" });
-    const sub = [when, runsAt(e, section), where].filter(Boolean).join(" &middot; ");
+    const sub = [when, runsAt(e, D, section), where].filter(Boolean).join(" &middot; ");
     const more = e.details || (GAPS && st.short && !e.past);
     return `${rule}<article data-date="${esc(e.date)}" class="ev${e.off ? " isoff" : ""}${e.past ? " past" : ""}${more ? " more" : ""}" ${more ? `tabindex="0" role="button" aria-expanded="false" onclick="openEv(this)" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();openEv(this)}"` : ""}>
       <div class="evdate"><b>${d.getDate()}</b><span>${esc(d.toLocaleDateString("en-IE", { month: "short" }).toUpperCase())}</span></div>
